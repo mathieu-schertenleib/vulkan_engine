@@ -61,3 +61,19 @@ target_link_libraries(vulkan_engine PRIVATE glfw)
 find_package(Vulkan REQUIRED)
 target_include_directories(vulkan_engine PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(vulkan_engine PRIVATE ${Vulkan_LIBRARIES})
+
+
+set(SHADERS shaders/shader.frag)
+foreach (SHADER IN LISTS SHADERS)
+    get_filename_component(FILENAME ${SHADER} NAME)
+    set(SRC_SHADER ${CMAKE_SOURCE_DIR}/${SHADER})
+    set(SPV_SHADER ${CMAKE_SOURCE_DIR}/shaders/spv/${FILENAME}.spv)
+    add_custom_command(
+            OUTPUT ${SPV_SHADER}
+            COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SRC_SHADER} -o ${SPV_SHADER}
+            DEPENDS ${SRC_SHADER}
+            COMMENT "Compiling ${SHADER}")
+    list(APPEND SPV_SHADERS ${SPV_SHADER})
+endforeach ()
+add_custom_target(shaders ALL DEPENDS ${SPV_SHADERS})
+add_dependencies(vulkan_engine shaders)
