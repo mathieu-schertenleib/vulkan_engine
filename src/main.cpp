@@ -1,4 +1,4 @@
-#include <GLFW/glfw3.h>
+#include "window.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -7,21 +7,6 @@
 
 int main()
 {
-    if (!glfwInit())
-    {
-        std::cerr << "Failed to initialize GLFW\n";
-        return EXIT_FAILURE;
-    }
-
-    const auto window =
-        glfwCreateWindow(640, 480, "Vulkan engine", nullptr, nullptr);
-    if (!window)
-    {
-        std::cerr << "Failed to create window\n";
-        glfwTerminate();
-        return EXIT_FAILURE;
-    }
-
     VkApplicationInfo application_info {};
     application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     VkInstanceCreateInfo instance_create_info {};
@@ -35,16 +20,10 @@ int main()
         std::cerr << "Failed to create Vulkan instance\n";
     }
 
-    while (!glfwWindowShouldClose(window))
-    {
-        glfwWaitEvents();
-    }
+    Window window;
+    window.run();
 
     vkDestroyInstance(instance, nullptr);
-
-    glfwDestroyWindow(window);
-
-    glfwTerminate();
 
     return EXIT_SUCCESS;
 }

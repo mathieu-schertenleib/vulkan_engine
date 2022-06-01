@@ -45,6 +45,7 @@ endif ()
 
 add_executable(vulkan_engine
         src/main.cpp
+        src/window.cpp src/window.hpp
         )
 target_compile_options(vulkan_engine PRIVATE ${PROJECT_OPTIONS})
 target_compile_features(vulkan_engine PRIVATE cxx_std_20)
