@@ -1,6 +1,8 @@
 #ifndef WINDOW_HPP
 #define WINDOW_HPP
 
+#include "renderer.hpp"
+
 #include <GLFW/glfw3.h>
 
 class Window
@@ -15,6 +17,9 @@ public:
     Window(Window &&) = default;
     Window &operator=(Window &&) = default;
 
+    [[nodiscard]] std::vector<const char *>
+    get_required_vulkan_instance_extensions();
+
     void run();
 
 private:
@@ -28,6 +33,8 @@ private:
     scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
     static void key_callback(
         GLFWwindow *window, int key, int scancode, int action, int mods);
+    static void
+    framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
     GLFWwindow *m_window;
 };

@@ -5,12 +5,13 @@ project(vulkan_engine LANGUAGES CXX)
 
 
 set(CLANG_OPTIONS
+        -ffast-math
+        -march=native
         -Wfatal-errors
         -Wall
         -Wextra
         -Wshadow
         -Wnon-virtual-dtor
-        -Wold-style-cast
         -Wcast-align
         -Wunused
         -Woverloaded-virtual
@@ -46,6 +47,8 @@ endif ()
 add_executable(vulkan_engine
         src/main.cpp
         src/window.cpp src/window.hpp
+        src/renderer.cpp src/renderer.hpp
+        src/utils.cpp src/utils.hpp
         )
 target_compile_options(vulkan_engine PRIVATE ${PROJECT_OPTIONS})
 target_compile_features(vulkan_engine PRIVATE cxx_std_20)
@@ -73,7 +76,7 @@ foreach (SHADER IN LISTS SHADERS)
             OUTPUT ${SPV_SHADER}
             COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SRC_SHADER} -o ${SPV_SHADER}
             DEPENDS ${SRC_SHADER}
-            COMMENT "Compiling ${SHADER}")
+            COMMENT "Compiling ${SRC_SHADER}")
     list(APPEND SPV_SHADERS ${SPV_SHADER})
 endforeach ()
 add_custom_target(shaders ALL DEPENDS ${SPV_SHADERS})

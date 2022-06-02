@@ -1,7 +1,6 @@
 #include "window.hpp"
 
 #include <iostream>
-#include <sstream>
 
 namespace
 {
@@ -29,12 +28,20 @@ Window::Window()
     glfwSetMouseButtonCallback(m_window, mouse_button_callback);
     glfwSetScrollCallback(m_window, scroll_callback);
     glfwSetKeyCallback(m_window, key_callback);
+    glfwSetFramebufferSizeCallback(m_window, framebuffer_size_callback);
 }
 
 Window::~Window()
 {
     glfwDestroyWindow(m_window);
     glfwTerminate();
+}
+
+std::vector<const char *> Window::get_required_vulkan_instance_extensions()
+{
+    std::uint32_t extension_count {};
+    const auto extensions = glfwGetRequiredInstanceExtensions(&extension_count);
+    return {extensions, extensions + extension_count};
 }
 
 void Window::run()
@@ -86,5 +93,11 @@ void Window::scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
 
 void Window::key_callback(
     GLFWwindow *window, int key, int scancode, int action, int mods)
+{
+}
+
+void Window::framebuffer_size_callback(GLFWwindow *window,
+                                       int width,
+                                       int height)
 {
 }
