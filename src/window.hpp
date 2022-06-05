@@ -5,6 +5,10 @@
 
 #include <GLFW/glfw3.h>
 
+#include <vector>
+
+[[nodiscard]] std::vector<const char *> required_vulkan_instance_extensions();
+
 class Window
 {
 public:
@@ -16,9 +20,6 @@ public:
 
     Window(Window &&) = default;
     Window &operator=(Window &&) = default;
-
-    [[nodiscard]] std::vector<const char *>
-    get_required_vulkan_instance_extensions();
 
     void run();
 

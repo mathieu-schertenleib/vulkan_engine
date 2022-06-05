@@ -12,6 +12,13 @@ void glfw_error_callback(int error [[maybe_unused]], const char *description)
 
 } // namespace
 
+std::vector<const char *> required_vulkan_instance_extensions()
+{
+    std::uint32_t extension_count {};
+    const auto extensions = glfwGetRequiredInstanceExtensions(&extension_count);
+    return {extensions, extensions + extension_count};
+}
+
 Window::Window()
 {
     glfwSetErrorCallback(glfw_error_callback);
@@ -35,13 +42,6 @@ Window::~Window()
 {
     glfwDestroyWindow(m_window);
     glfwTerminate();
-}
-
-std::vector<const char *> Window::get_required_vulkan_instance_extensions()
-{
-    std::uint32_t extension_count {};
-    const auto extensions = glfwGetRequiredInstanceExtensions(&extension_count);
-    return {extensions, extensions + extension_count};
 }
 
 void Window::run()

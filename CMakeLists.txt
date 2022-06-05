@@ -49,7 +49,9 @@ add_executable(vulkan_engine
         src/window.cpp src/window.hpp
         src/renderer.cpp src/renderer.hpp
         src/utils.cpp src/utils.hpp
+        external/stb_image.h external/stb_image_write.h
         )
+target_include_directories(vulkan_engine PRIVATE external)
 target_compile_options(vulkan_engine PRIVATE ${PROJECT_OPTIONS})
 target_compile_features(vulkan_engine PRIVATE cxx_std_20)
 

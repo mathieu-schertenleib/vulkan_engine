@@ -11,7 +11,7 @@
 class Renderer
 {
 public:
-    [[nodiscard]] Renderer(
+    [[nodiscard]] explicit Renderer(
         const std::vector<const char *> &required_instance_extensions);
 
     Renderer(const Renderer &) = delete;
@@ -21,35 +21,15 @@ public:
     Renderer &operator=(Renderer &&) = default;
 
 private:
-    [[nodiscard]] static vk::raii::Instance create_instance(
-        const std::vector<const char *> &required_instance_extensions);
-
-#ifdef ENABLE_VALIDATION_LAYERS
-    static VKAPI_ATTR VkBool32 VKAPI_CALL
-    debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
-                   VkDebugUtilsMessageTypeFlagsEXT message_type,
-                   const VkDebugUtilsMessengerCallbackDataEXT *callback_data,
-                   void *user_data);
-    static constexpr vk::DebugUtilsMessengerCreateInfoEXT
-        s_debug_utils_messenger_create_info {
-            .messageSeverity =
-                vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-                vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
-            .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
-                           vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
-                           vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-            .pfnUserCallback = debug_callback};
-#endif
-
-    [[nodiscard]] vk::raii::PhysicalDevice create_physical_device();
+    [[nodiscard]] vk::raii::PhysicalDevice select_physical_device();
     [[nodiscard]] vk::raii::Device create_device();
 
-    vk::raii::Instance m_instance;
+    [[nodiscard]] std::uint32_t compute_queue_family_index();
 
+    vk::raii::Instance m_instance;
 #ifdef ENABLE_VALIDATION_LAYERS
     vk::raii::DebugUtilsMessengerEXT m_debug_messenger;
 #endif
-
     vk::raii::PhysicalDevice m_physical_device;
     vk::raii::Device m_device;
 };
