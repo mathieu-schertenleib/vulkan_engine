@@ -1,13 +1,24 @@
-#include "window.hpp"
+#include "application.hpp"
 
 #include <cstdlib>
+#include <iostream>
 
 int main()
 {
-    Window window;
-    Renderer renderer(window.get_required_vulkan_instance_extensions());
+    try
+    {
+        Application app;
+        app.run();
+        return EXIT_SUCCESS;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << e.what() << std::endl;
+    }
+    catch (...)
+    {
+        std::cerr << "Unknown exception thrown" << std::endl;
+    }
 
-    window.run();
-
-    return EXIT_SUCCESS;
+    return EXIT_FAILURE;
 }

@@ -46,7 +46,7 @@ endif ()
 
 add_executable(vulkan_engine
         src/main.cpp
-        src/window.cpp src/window.hpp
+        src/application.cpp src/application.hpp
         src/renderer.cpp src/renderer.hpp
         src/utils.cpp src/utils.hpp
         external/stb_image.h external/stb_image_write.h
@@ -64,12 +64,17 @@ target_include_directories(vulkan_engine PRIVATE external/glfw/include)
 target_link_libraries(vulkan_engine PRIVATE glfw)
 
 
+add_subdirectory(external/glm)
+target_include_directories(vulkan_engine PRIVATE external/glm)
+target_link_libraries(vulkan_engine PRIVATE glm)
+
+
 find_package(Vulkan REQUIRED)
 target_include_directories(vulkan_engine PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(vulkan_engine PRIVATE ${Vulkan_LIBRARIES})
 
 
-set(SHADERS shaders/shader.frag)
+set(SHADERS shaders/shader.vert shaders/shader.frag)
 foreach (SHADER IN LISTS SHADERS)
     get_filename_component(FILENAME ${SHADER} NAME)
     set(SRC_SHADER ${CMAKE_SOURCE_DIR}/${SHADER})

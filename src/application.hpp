@@ -1,25 +1,24 @@
-#ifndef WINDOW_HPP
-#define WINDOW_HPP
+#ifndef APPLICATION_HPP
+#define APPLICATION_HPP
 
 #include "renderer.hpp"
 
 #include <GLFW/glfw3.h>
 
+#include <memory>
 #include <vector>
 
-[[nodiscard]] std::vector<const char *> required_vulkan_instance_extensions();
-
-class Window
+class Application
 {
 public:
-    [[nodiscard]] Window();
-    ~Window();
+    [[nodiscard]] Application();
+    ~Application();
 
-    Window(const Window &) = delete;
-    Window &operator=(const Window &) = delete;
+    Application(const Application &) = delete;
+    Application &operator=(const Application &) = delete;
 
-    Window(Window &&) = default;
-    Window &operator=(Window &&) = default;
+    Application(Application &&) = default;
+    Application &operator=(Application &&) = default;
 
     void run();
 
@@ -38,6 +37,7 @@ private:
     framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
     GLFWwindow *m_window;
+    std::unique_ptr<Renderer> m_renderer;
 };
 
-#endif // WINDOW_HPP
+#endif // APPLICATION_HPP

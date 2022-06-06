@@ -11,13 +11,19 @@
 
 std::vector<std::uint8_t> load_binary_file(const std::filesystem::path &path)
 {
+    if (!std::filesystem::exists(path))
+    {
+        std::cerr << "File \"" << path << "\" does not exist\n";
+        return {};
+    }
+
     const auto size = std::filesystem::file_size(path);
     std::vector<std::uint8_t> data(size);
 
     std::ifstream file(path, std::ios::binary);
     if (!file)
     {
-        std::cerr << "Failed to load binary file \"" << path << "\"\n";
+        std::cerr << "Failed to open file \"" << path << "\"\n";
         return {};
     }
 
@@ -46,8 +52,7 @@ Image load_image(const std::filesystem::path &path)
 
     stbi_image_free(pixels);
 
-    return {
-        .width = width, .height = height, .channels = channels, .data = data};
+    return {width, height, channels, data};
 }
 
 void store_png(const std::filesystem::path &path, const Image &image)

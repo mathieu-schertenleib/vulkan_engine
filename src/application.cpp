@@ -1,4 +1,4 @@
-#include "window.hpp"
+#include "application.hpp"
 
 #include <iostream>
 
@@ -12,14 +12,7 @@ void glfw_error_callback(int error [[maybe_unused]], const char *description)
 
 } // namespace
 
-std::vector<const char *> required_vulkan_instance_extensions()
-{
-    std::uint32_t extension_count {};
-    const auto extensions = glfwGetRequiredInstanceExtensions(&extension_count);
-    return {extensions, extensions + extension_count};
-}
-
-Window::Window()
+Application::Application()
 {
     glfwSetErrorCallback(glfw_error_callback);
 
@@ -36,15 +29,21 @@ Window::Window()
     glfwSetScrollCallback(m_window, scroll_callback);
     glfwSetKeyCallback(m_window, key_callback);
     glfwSetFramebufferSizeCallback(m_window, framebuffer_size_callback);
+
+    int width {};
+    int height {};
+    glfwGetFramebufferSize(m_window, &width, &height);
+
+    m_renderer = std::make_unique<Renderer>(m_window, width, height);
 }
 
-Window::~Window()
+Application::~Application()
 {
     glfwDestroyWindow(m_window);
     glfwTerminate();
 }
 
-void Window::run()
+void Application::run()
 {
     int frames {};
     auto last_second = glfwGetTime();
@@ -72,32 +71,36 @@ void Window::run()
     }
 }
 
-void Window::update(double elapsed_seconds)
+void Application::update(double elapsed_seconds)
 {
 }
 
-void Window::cursor_pos_callback(GLFWwindow *window, double xpos, double ypos)
+void Application::cursor_pos_callback(GLFWwindow *window,
+                                      double xpos,
+                                      double ypos)
 {
 }
 
-void Window::mouse_button_callback(GLFWwindow *window,
-                                   int button,
-                                   int action,
-                                   int mods)
+void Application::mouse_button_callback(GLFWwindow *window,
+                                        int button,
+                                        int action,
+                                        int mods)
 {
 }
 
-void Window::scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
+void Application::scroll_callback(GLFWwindow *window,
+                                  double xoffset,
+                                  double yoffset)
 {
 }
 
-void Window::key_callback(
+void Application::key_callback(
     GLFWwindow *window, int key, int scancode, int action, int mods)
 {
 }
 
-void Window::framebuffer_size_callback(GLFWwindow *window,
-                                       int width,
-                                       int height)
+void Application::framebuffer_size_callback(GLFWwindow *window,
+                                            int width,
+                                            int height)
 {
 }
