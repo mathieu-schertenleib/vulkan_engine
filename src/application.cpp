@@ -100,6 +100,32 @@ void Application::scroll_callback(GLFWwindow *window,
 void Application::key_callback(
     GLFWwindow *window, int key, int scancode, int action, int mods)
 {
+    if (action == GLFW_PRESS && key == GLFW_KEY_F)
+    {
+        // Toggle fullscreen
+
+        auto *const monitor = glfwGetPrimaryMonitor();
+        const auto *const video_mode = glfwGetVideoMode(monitor);
+        if (glfwGetWindowMonitor(window) != nullptr)
+        {
+            constexpr int width {640};
+            constexpr int height {480};
+            const auto pos_x = std::max((video_mode->width - width) / 2, 0);
+            const auto pos_y = std::max((video_mode->height - height) / 2, 0);
+            glfwSetWindowMonitor(
+                window, nullptr, pos_x, pos_y, width, height, GLFW_DONT_CARE);
+        }
+        else
+        {
+            glfwSetWindowMonitor(window,
+                                 monitor,
+                                 0,
+                                 0,
+                                 video_mode->width,
+                                 video_mode->height,
+                                 GLFW_DONT_CARE);
+        }
+    }
 }
 
 void Application::framebuffer_size_callback(GLFWwindow *window,
