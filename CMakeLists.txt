@@ -83,7 +83,7 @@ foreach (SHADER IN LISTS SHADERS)
             OUTPUT ${SPV_SHADER}
             COMMAND ${Vulkan_GLSLC_EXECUTABLE} ${SRC_SHADER} -o ${SPV_SHADER}
             DEPENDS ${SRC_SHADER}
-            COMMENT "Compiling ${SRC_SHADER}")
+            COMMENT "Compiling ${SHADER}")
     list(APPEND SPV_SHADERS ${SPV_SHADER})
 endforeach ()
 add_custom_target(shaders ALL DEPENDS ${SPV_SHADERS})

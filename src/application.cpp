@@ -55,8 +55,11 @@ void Application::run()
 
         const auto now = glfwGetTime();
         const auto elapsed_seconds = now - last_frame_time;
-        update(elapsed_seconds);
         last_frame_time = now;
+
+        update(elapsed_seconds);
+
+        m_renderer->draw_frame();
 
         ++frames;
 
@@ -103,4 +106,7 @@ void Application::framebuffer_size_callback(GLFWwindow *window,
                                             int width,
                                             int height)
 {
+    auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
+    app->m_renderer->resize_framebuffer(static_cast<std::uint32_t>(width),
+                                        static_cast<std::uint32_t>(height));
 }
