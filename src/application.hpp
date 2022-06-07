@@ -1,7 +1,7 @@
 #ifndef APPLICATION_HPP
 #define APPLICATION_HPP
 
-#include "renderer.hpp"
+#include "old_renderer.hpp"
 
 #include <GLFW/glfw3.h>
 

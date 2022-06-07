@@ -49,6 +49,7 @@ add_executable(vulkan_engine
         src/application.cpp src/application.hpp
         src/renderer.cpp src/renderer.hpp
         src/utils.cpp src/utils.hpp
+        src/vulkan_utils.cpp src/vulkan_utils.hpp
         external/stb_image.h external/stb_image_write.h
         )
 target_include_directories(vulkan_engine PRIVATE external)
