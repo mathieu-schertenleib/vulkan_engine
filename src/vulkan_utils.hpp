@@ -101,7 +101,7 @@ create_swapchain_image_views(const vk::raii::Device &device,
                              vk::Format swapchain_format);
 
 [[nodiscard]] vk::raii::ImageView create_image_view(
-    const vk::raii::Device &device, const vk::Image &image, vk::Format format);
+    const vk::raii::Device &device, vk::Image image, vk::Format format);
 
 [[nodiscard]] vk::raii::CommandPool
 create_command_pool(const vk::raii::Device &device,
@@ -137,27 +137,40 @@ create_image(const vk::raii::Device &device,
              vk::ImageUsageFlags usage,
              vk::MemoryPropertyFlags properties);
 
-void copy_buffer(const vk::raii::Device &device,
-                 const vk::raii::CommandPool &command_pool,
-                 const vk::raii::Queue &graphics_queue,
-                 vk::Buffer src,
-                 vk::Buffer dst,
-                 vk::DeviceSize size);
+void command_copy_buffer(const vk::raii::CommandBuffer &command_buffer,
+                         vk::Buffer src,
+                         vk::Buffer dst,
+                         vk::DeviceSize size);
 
-void copy_buffer_to_image(const vk::raii::Device &device,
-                          const vk::raii::CommandPool &command_pool,
-                          const vk::raii::Queue &graphics_queue,
-                          vk::Buffer buffer,
-                          vk::Image image,
-                          std::uint32_t width,
-                          std::uint32_t height);
+void command_copy_buffer_to_image(const vk::raii::CommandBuffer &command_buffer,
+                                  vk::Buffer buffer,
+                                  vk::Image image,
+                                  std::uint32_t width,
+                                  std::uint32_t height);
 
-void transition_image_layout(const vk::raii::Device &device,
-                             const vk::raii::CommandPool &command_pool,
-                             const vk::raii::Queue &graphics_queue,
-                             vk::Image image,
-                             vk::ImageLayout old_layout,
-                             vk::ImageLayout new_layout);
+void command_copy_image_to_buffer(const vk::raii::CommandBuffer &command_buffer,
+                                  vk::Image image,
+                                  vk::Buffer buffer,
+                                  std::uint32_t width,
+                                  std::uint32_t height);
+
+void command_blit_image(const vk::raii::CommandBuffer &command_buffer,
+                        vk::Image src_image,
+                        std::int32_t src_width,
+                        std::int32_t src_height,
+                        vk::Image dst_image,
+                        std::int32_t dst_width,
+                        std::int32_t dst_height);
+
+void command_transition_image_layout(
+    const vk::raii::CommandBuffer &command_buffer,
+    vk::Image image,
+    vk::ImageLayout old_layout,
+    vk::ImageLayout new_layout,
+    vk::PipelineStageFlags src_stage_mask,
+    vk::PipelineStageFlags dst_stage_mask,
+    vk::AccessFlags src_access_mask,
+    vk::AccessFlags dst_access_mask);
 
 [[nodiscard]] vk::raii::RenderPass
 create_render_pass(const vk::raii::Device &device, vk::Format swapchain_format);

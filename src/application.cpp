@@ -34,7 +34,9 @@ Application::Application()
     int height {};
     glfwGetFramebufferSize(m_window, &width, &height);
 
-    m_renderer = std::make_unique<Renderer>(m_window, width, height);
+    m_renderer = std::make_unique<Renderer>(m_window,
+                                            static_cast<std::uint32_t>(width),
+                                            static_cast<std::uint32_t>(height));
 }
 
 Application::~Application()

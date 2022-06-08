@@ -382,6 +382,7 @@ Swapchain create_swapchain(const vk::raii::Device &device,
         swapchain_create_info.queueFamilyIndexCount = 1;
         swapchain_create_info.pQueueFamilyIndices = queue_family_indices_array;
     }
+
     return Swapchain {.swapchain =
                           vk::raii::SwapchainKHR(device, swapchain_create_info),
                       .format = surface_format.format,
@@ -394,10 +395,12 @@ get_swapchain_images(const vk::raii::SwapchainKHR &swapchain)
     const auto images = swapchain.getImages();
     std::vector<vk::Image> result;
     result.reserve(images.size());
+
     for (const auto &image : images)
     {
         result.emplace_back(image);
     }
+
     return result;
 }
 
@@ -419,7 +422,7 @@ create_swapchain_image_views(const vk::raii::Device &device,
 }
 
 vk::raii::ImageView create_image_view(const vk::raii::Device &device,
-                                      const vk::Image &image,
+                                      vk::Image image,
                                       vk::Format format)
 {
     const vk::ImageViewCreateInfo create_info {
@@ -563,33 +566,21 @@ Image create_image(const vk::raii::Device &device,
     return {std::move(image), std::move(view), std::move(memory)};
 }
 
-void copy_buffer(const vk::raii::Device &device,
-                 const vk::raii::CommandPool &command_pool,
-                 const vk::raii::Queue &graphics_queue,
-                 vk::Buffer src,
-                 vk::Buffer dst,
-                 vk::DeviceSize size)
+void command_copy_buffer(const vk::raii::CommandBuffer &command_buffer,
+                         vk::Buffer src,
+                         vk::Buffer dst,
+                         vk::DeviceSize size)
 {
-    const auto command_buffer =
-        begin_one_time_submit_command_buffer(device, command_pool);
-
     const vk::BufferCopy region {.size = size};
     command_buffer.copyBuffer(src, dst, region);
-
-    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
 }
 
-void copy_buffer_to_image(const vk::raii::Device &device,
-                          const vk::raii::CommandPool &command_pool,
-                          const vk::raii::Queue &graphics_queue,
-                          vk::Buffer buffer,
-                          vk::Image image,
-                          std::uint32_t width,
-                          std::uint32_t height)
+void command_copy_buffer_to_image(const vk::raii::CommandBuffer &command_buffer,
+                                  vk::Buffer buffer,
+                                  vk::Image image,
+                                  std::uint32_t width,
+                                  std::uint32_t height)
 {
-    const auto command_buffer =
-        begin_one_time_submit_command_buffer(device, command_pool);
-
     const vk::BufferImageCopy region {
         .bufferOffset = 0,
         .bufferRowLength = 0,
@@ -603,21 +594,72 @@ void copy_buffer_to_image(const vk::raii::Device &device,
 
     command_buffer.copyBufferToImage(
         buffer, image, vk::ImageLayout::eTransferDstOptimal, region);
-
-    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
 }
 
-void transition_image_layout(const vk::raii::Device &device,
-                             const vk::raii::CommandPool &command_pool,
-                             const vk::raii::Queue &graphics_queue,
-                             vk::Image image,
-                             vk::ImageLayout old_layout,
-                             vk::ImageLayout new_layout)
+void command_copy_image_to_buffer(const vk::raii::CommandBuffer &command_buffer,
+                                  vk::Image image,
+                                  vk::Buffer buffer,
+                                  std::uint32_t width,
+                                  std::uint32_t height)
 {
-    const auto command_buffer =
-        begin_one_time_submit_command_buffer(device, command_pool);
+    const vk::BufferImageCopy region {
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                             .mipLevel = 0,
+                             .baseArrayLayer = 0,
+                             .layerCount = 1},
+        .imageOffset = {0, 0, 0},
+        .imageExtent = {width, height, 1}};
 
-    vk::ImageMemoryBarrier memory_barrier {
+    command_buffer.copyImageToBuffer(
+        image, vk::ImageLayout::eTransferSrcOptimal, buffer, region);
+}
+
+void command_blit_image(const vk::raii::CommandBuffer &command_buffer,
+                        vk::Image src_image,
+                        std::int32_t src_width,
+                        std::int32_t src_height,
+                        vk::Image dst_image,
+                        std::int32_t dst_width,
+                        std::int32_t dst_height)
+{
+    const vk::ImageBlit region {
+        .srcSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .mipLevel = 0,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1},
+        .srcOffsets = {{vk::Offset3D {0, 0, 0},
+                        vk::Offset3D {src_width, src_height, 1}}},
+        .dstSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .mipLevel = 0,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1},
+        .dstOffsets = {
+            {vk::Offset3D {0, 0, 0}, vk::Offset3D {dst_width, dst_height, 1}}}};
+
+    command_buffer.blitImage(src_image,
+                             vk::ImageLayout::eTransferSrcOptimal,
+                             dst_image,
+                             vk::ImageLayout::eTransferDstOptimal,
+                             region,
+                             vk::Filter::eNearest);
+}
+
+void command_transition_image_layout(
+    const vk::raii::CommandBuffer &command_buffer,
+    vk::Image image,
+    vk::ImageLayout old_layout,
+    vk::ImageLayout new_layout,
+    vk::PipelineStageFlags src_stage_mask,
+    vk::PipelineStageFlags dst_stage_mask,
+    vk::AccessFlags src_access_mask,
+    vk::AccessFlags dst_access_mask)
+{
+    const vk::ImageMemoryBarrier memory_barrier {
+        .srcAccessMask = src_access_mask,
+        .dstAccessMask = dst_access_mask,
         .oldLayout = old_layout,
         .newLayout = new_layout,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -629,34 +671,8 @@ void transition_image_layout(const vk::raii::Device &device,
                              .baseArrayLayer = 0,
                              .layerCount = 1}};
 
-    vk::PipelineStageFlags source_stage_mask;
-    vk::PipelineStageFlags destination_stage_mask;
-
-    if (old_layout == vk::ImageLayout::eUndefined &&
-        new_layout == vk::ImageLayout::eTransferDstOptimal)
-    {
-        memory_barrier.srcAccessMask = {};
-        memory_barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-        source_stage_mask = vk::PipelineStageFlagBits::eTopOfPipe;
-        destination_stage_mask = vk::PipelineStageFlagBits::eTransfer;
-    }
-    else if (old_layout == vk::ImageLayout::eTransferDstOptimal &&
-             new_layout == vk::ImageLayout::eShaderReadOnlyOptimal)
-    {
-        memory_barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-        memory_barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-        source_stage_mask = vk::PipelineStageFlagBits::eTransfer;
-        destination_stage_mask = vk::PipelineStageFlagBits::eFragmentShader;
-    }
-    else
-    {
-        throw std::invalid_argument("Unimplemented image layout transition");
-    }
-
     command_buffer.pipelineBarrier(
-        source_stage_mask, destination_stage_mask, {}, {}, {}, memory_barrier);
-
-    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
+        src_stage_mask, dst_stage_mask, {}, {}, {}, memory_barrier);
 }
 
 vk::raii::RenderPass create_render_pass(const vk::raii::Device &device,
@@ -944,27 +960,34 @@ Image create_texture_image(const vk::raii::Device &device,
                                   vk::ImageUsageFlagBits::eSampled,
                               vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    transition_image_layout(device,
-                            command_pool,
-                            graphics_queue,
-                            *image.image,
-                            vk::ImageLayout::eUndefined,
-                            vk::ImageLayout::eTransferDstOptimal);
+    const auto command_buffer =
+        begin_one_time_submit_command_buffer(device, command_pool);
 
-    copy_buffer_to_image(device,
-                         command_pool,
-                         graphics_queue,
-                         *staging_buffer.buffer,
-                         *image.image,
-                         static_cast<std::uint32_t>(width),
-                         static_cast<std::uint32_t>(height));
+    command_transition_image_layout(command_buffer,
+                                    *image.image,
+                                    vk::ImageLayout::eUndefined,
+                                    vk::ImageLayout::eTransferDstOptimal,
+                                    vk::PipelineStageFlagBits::eTopOfPipe,
+                                    vk::PipelineStageFlagBits::eTransfer,
+                                    {},
+                                    vk::AccessFlagBits::eTransferWrite);
 
-    transition_image_layout(device,
-                            command_pool,
-                            graphics_queue,
-                            *image.image,
-                            vk::ImageLayout::eTransferDstOptimal,
-                            vk::ImageLayout::eShaderReadOnlyOptimal);
+    command_copy_buffer_to_image(command_buffer,
+                                 *staging_buffer.buffer,
+                                 *image.image,
+                                 static_cast<std::uint32_t>(width),
+                                 static_cast<std::uint32_t>(height));
+
+    command_transition_image_layout(command_buffer,
+                                    *image.image,
+                                    vk::ImageLayout::eTransferDstOptimal,
+                                    vk::ImageLayout::eShaderReadOnlyOptimal,
+                                    vk::PipelineStageFlagBits::eTransfer,
+                                    vk::PipelineStageFlagBits::eFragmentShader,
+                                    vk::AccessFlagBits::eTransferWrite,
+                                    vk::AccessFlagBits::eShaderRead);
+
+    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
 
     return image;
 }
@@ -1066,12 +1089,15 @@ Buffer create_vertex_buffer(const vk::raii::Device &device,
                           vk::BufferUsageFlagBits::eVertexBuffer,
                       vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    copy_buffer(device,
-                command_pool,
-                graphics_queue,
-                *staging_buffer.buffer,
-                *vertex_buffer.buffer,
-                buffer_size);
+    const auto command_buffer =
+        begin_one_time_submit_command_buffer(device, command_pool);
+
+    command_copy_buffer(command_buffer,
+                        *staging_buffer.buffer,
+                        *vertex_buffer.buffer,
+                        buffer_size);
+
+    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
 
     return vertex_buffer;
 }
@@ -1103,12 +1129,15 @@ Buffer create_index_buffer(const vk::raii::Device &device,
                                           vk::BufferUsageFlagBits::eIndexBuffer,
                                       vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    copy_buffer(device,
-                command_pool,
-                graphics_queue,
-                *staging_buffer.buffer,
-                *index_buffer.buffer,
-                buffer_size);
+    const auto command_buffer =
+        begin_one_time_submit_command_buffer(device, command_pool);
+
+    command_copy_buffer(command_buffer,
+                        *staging_buffer.buffer,
+                        *index_buffer.buffer,
+                        buffer_size);
+
+    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
 
     return index_buffer;
 }

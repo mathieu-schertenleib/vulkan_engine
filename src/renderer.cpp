@@ -207,7 +207,7 @@ void Renderer::draw_frame()
 
     record_frame_command_buffer(m_command_buffers[m_current_frame],
                                 *m_render_pass,
-                                *m_framebuffers[m_current_frame],
+                                *m_framebuffers[image_index],
                                 m_swapchain.extent,
                                 *m_pipeline,
                                 *m_pipeline_layout,
