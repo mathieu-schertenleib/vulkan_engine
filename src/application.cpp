@@ -48,20 +48,27 @@ Application::~Application()
 void Application::run()
 {
     int frames {};
-    auto last_second = glfwGetTime();
-    auto last_frame_time = last_second;
+    const auto start_time = glfwGetTime();
+    auto last_second = start_time;
+    auto last_frame_time = start_time;
 
     while (!glfwWindowShouldClose(m_window))
     {
         glfwPollEvents();
 
         const auto now = glfwGetTime();
-        const auto elapsed_seconds = now - last_frame_time;
+        const auto delta_time = now - last_frame_time;
         last_frame_time = now;
+        const auto total_time = now - start_time;
 
-        update(elapsed_seconds);
+        update(delta_time);
 
-        m_renderer->draw_frame();
+        double x, y;
+        glfwGetCursorPos(m_window, &x, &y);
+
+        m_renderer->draw_frame(static_cast<float>(total_time),
+                               static_cast<float>(delta_time),
+                               {static_cast<float>(x), static_cast<float>(y)});
 
         ++frames;
 

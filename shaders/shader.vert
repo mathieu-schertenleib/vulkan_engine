@@ -5,6 +5,7 @@ layout(binding = 0) uniform Uniform_buffer_object
     vec2 resolution;
     vec2 mouse_position;
     float time;
+    float delta_time;
 } ubo;
 
 layout(location = 0) in vec3 in_position;
@@ -12,9 +13,12 @@ layout(location = 1) in vec2 in_tex_coord;
 
 layout(location = 0) out vec3 frag_color;
 layout(location = 1) out vec2 frag_tex_coord;
+layout(location = 2) out vec2 resolution;
+layout(location = 3) out vec2 mouse_position;
 
-#define FREQUENCY 0.2
+
 #define PI 3.141592741
+#define FREQUENCY 0.2
 
 void main()
 {
@@ -26,4 +30,7 @@ void main()
     frag_color = vec3(r, g, b);
 
     frag_tex_coord = in_tex_coord;
+
+    resolution = ubo.resolution;
+    mouse_position = ubo.mouse_position;
 }

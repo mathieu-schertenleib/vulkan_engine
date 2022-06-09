@@ -4,6 +4,8 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include <iostream>
 #include <limits>
@@ -98,22 +100,6 @@ is_physical_device_suitable(const vk::raii::PhysicalDevice &physical_device,
 
     return true;
 }
-
-inline constexpr vk::VertexInputBindingDescription vertex_binding_description {
-    .binding = 0,
-    .stride = sizeof(Vertex),
-    .inputRate = vk::VertexInputRate::eVertex};
-
-inline constexpr std::array vertex_attribute_descriptions {
-    vk::VertexInputAttributeDescription {.location = 0,
-                                         .binding = 0,
-                                         .format = vk::Format::eR32G32B32Sfloat,
-                                         .offset = offsetof(Vertex, pos)},
-    vk::VertexInputAttributeDescription {.location = 1,
-                                         .binding = 0,
-                                         .format = vk::Format::eR32G32Sfloat,
-                                         .offset =
-                                             offsetof(Vertex, tex_coord)}};
 
 } // namespace
 
@@ -749,12 +735,16 @@ vk::raii::PipelineLayout create_pipeline_layout(
     return {device, create_info};
 }
 
-vk::raii::Pipeline create_pipeline(const vk::raii::Device &device,
-                                   const char *vertex_shader_path,
-                                   const char *fragment_shader_path,
-                                   const vk::Extent2D &swapchain_extent,
-                                   vk::PipelineLayout pipeline_layout,
-                                   vk::RenderPass render_pass)
+vk::raii::Pipeline create_pipeline(
+    const vk::raii::Device &device,
+    const char *vertex_shader_path,
+    const char *fragment_shader_path,
+    const vk::Extent2D &swapchain_extent,
+    vk::PipelineLayout pipeline_layout,
+    vk::RenderPass render_pass,
+    const vk::VertexInputBindingDescription &vertex_binding_description,
+    const vk::VertexInputAttributeDescription *vertex_attribute_descriptions,
+    std::uint32_t num_vertex_attribute_descriptions)
 {
     const auto vertex_shader_code = load_binary_file(vertex_shader_path);
     if (vertex_shader_code.empty())
@@ -789,14 +779,13 @@ vk::raii::Pipeline create_pipeline(const vk::raii::Device &device,
     const vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] {
         vertex_shader_stage_create_info, fragment_shader_stage_create_info};
 
-    constexpr vk::PipelineVertexInputStateCreateInfo
+    const vk::PipelineVertexInputStateCreateInfo
         vertex_input_state_create_info {
             .vertexBindingDescriptionCount = 1,
             .pVertexBindingDescriptions = &vertex_binding_description,
-            .vertexAttributeDescriptionCount = static_cast<std::uint32_t>(
-                vertex_attribute_descriptions.size()),
-            .pVertexAttributeDescriptions =
-                vertex_attribute_descriptions.data()};
+            .vertexAttributeDescriptionCount =
+                num_vertex_attribute_descriptions,
+            .pVertexAttributeDescriptions = vertex_attribute_descriptions};
 
     const vk::PipelineInputAssemblyStateCreateInfo
         input_assembly_state_create_info {
@@ -936,7 +925,7 @@ Image create_texture_image(const vk::raii::Device &device,
     }
     const auto image_size {static_cast<vk::DeviceSize>(width * height * 4)};
 
-    auto staging_buffer =
+    const auto staging_buffer =
         create_buffer(device,
                       physical_device,
                       image_size,
@@ -992,6 +981,74 @@ Image create_texture_image(const vk::raii::Device &device,
     return image;
 }
 
+void write_image_to_png(const vk::raii::Device &device,
+                        const vk::raii::PhysicalDevice &physical_device,
+                        const vk::raii::CommandPool &command_pool,
+                        const vk::raii::Queue &graphics_queue,
+                        vk::Image image,
+                        std::uint32_t width,
+                        std::uint32_t height,
+                        vk::ImageLayout layout,
+                        vk::PipelineStageFlags stage,
+                        vk::AccessFlags access,
+                        const char *path)
+{
+
+    const auto image_size {static_cast<vk::DeviceSize>(width * height * 4)};
+
+    const auto staging_buffer =
+        create_buffer(device,
+                      physical_device,
+                      image_size,
+                      vk::BufferUsageFlagBits::eTransferDst,
+                      vk::MemoryPropertyFlagBits::eHostVisible |
+                          vk::MemoryPropertyFlagBits::eHostCoherent);
+
+    const auto command_buffer =
+        begin_one_time_submit_command_buffer(device, command_pool);
+
+    command_transition_image_layout(command_buffer,
+                                    image,
+                                    layout,
+                                    vk::ImageLayout::eTransferSrcOptimal,
+                                    stage,
+                                    vk::PipelineStageFlagBits::eTransfer,
+                                    access,
+                                    vk::AccessFlagBits::eTransferRead);
+
+    command_copy_image_to_buffer(command_buffer,
+                                 image,
+                                 *staging_buffer.buffer,
+                                 static_cast<std::uint32_t>(width),
+                                 static_cast<std::uint32_t>(height));
+
+    command_transition_image_layout(command_buffer,
+                                    image,
+                                    vk::ImageLayout::eTransferSrcOptimal,
+                                    layout,
+                                    vk::PipelineStageFlagBits::eTransfer,
+                                    stage,
+                                    vk::AccessFlagBits::eTransferRead,
+                                    access);
+
+    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
+
+    const auto *const data = staging_buffer.memory.mapMemory(0, image_size);
+
+    if (!stbi_write_png(path,
+                        static_cast<int>(width),
+                        static_cast<int>(height),
+                        STBI_rgb_alpha,
+                        data,
+                        static_cast<int>(width) * STBI_rgb_alpha))
+    {
+        throw std::runtime_error(std::string("Failed to write image \"") +
+                                 std::string(path) + std::string("\""));
+    }
+
+    staging_buffer.memory.unmapMemory();
+}
+
 vk::raii::DescriptorPool create_descriptor_pool(const vk::raii::Device &device)
 {
     constexpr std::array pool_sizes {
@@ -1015,10 +1072,12 @@ create_descriptor_sets(const vk::raii::Device &device,
                        vk::DescriptorPool descriptor_pool,
                        vk::Sampler sampler,
                        vk::ImageView texture_image_view,
-                       const std::vector<Buffer> &uniform_buffers)
+                       const std::vector<Buffer> &uniform_buffers,
+                       vk::DeviceSize uniform_buffer_size)
 {
-    std::vector<vk::DescriptorSetLayout> layouts(max_frames_in_flight,
-                                                 descriptor_set_layout);
+    std::array<vk::DescriptorSetLayout, max_frames_in_flight> layouts;
+    std::fill(layouts.begin(), layouts.end(), descriptor_set_layout);
+
     const vk::DescriptorSetAllocateInfo allocate_info {
         .descriptorPool = descriptor_pool,
         .descriptorSetCount = max_frames_in_flight,
@@ -1032,7 +1091,7 @@ create_descriptor_sets(const vk::raii::Device &device,
         const vk::DescriptorBufferInfo buffer_info {
             .buffer = *uniform_buffers[i].buffer,
             .offset = 0,
-            .range = sizeof(Uniform_buffer_object)};
+            .range = uniform_buffer_size};
 
         const vk::DescriptorImageInfo image_info {
             .sampler = sampler,
@@ -1065,26 +1124,26 @@ Buffer create_vertex_buffer(const vk::raii::Device &device,
                             const vk::raii::PhysicalDevice &physical_device,
                             const vk::raii::CommandPool &command_pool,
                             const vk::raii::Queue &graphics_queue,
-                            const std::vector<Vertex> &vertices)
+                            const void *vertex_data,
+                            vk::DeviceSize vertex_buffer_size)
 {
-    const vk::DeviceSize buffer_size {sizeof(Vertex) * vertices.size()};
-
     const auto staging_buffer =
         create_buffer(device,
                       physical_device,
-                      buffer_size,
+                      vertex_buffer_size,
                       vk::BufferUsageFlagBits::eTransferSrc,
                       vk::MemoryPropertyFlagBits::eHostVisible |
                           vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    auto *const data = staging_buffer.memory.mapMemory(0, buffer_size);
-    std::memcpy(data, vertices.data(), static_cast<std::size_t>(buffer_size));
+    auto *const data = staging_buffer.memory.mapMemory(0, vertex_buffer_size);
+    std::memcpy(
+        data, vertex_data, static_cast<std::size_t>(vertex_buffer_size));
     staging_buffer.memory.unmapMemory();
 
     auto vertex_buffer =
         create_buffer(device,
                       physical_device,
-                      buffer_size,
+                      vertex_buffer_size,
                       vk::BufferUsageFlagBits::eTransferDst |
                           vk::BufferUsageFlagBits::eVertexBuffer,
                       vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -1095,7 +1154,7 @@ Buffer create_vertex_buffer(const vk::raii::Device &device,
     command_copy_buffer(command_buffer,
                         *staging_buffer.buffer,
                         *vertex_buffer.buffer,
-                        buffer_size);
+                        vertex_buffer_size);
 
     end_one_time_submit_command_buffer(command_buffer, graphics_queue);
 
@@ -1144,7 +1203,8 @@ Buffer create_index_buffer(const vk::raii::Device &device,
 
 std::vector<Buffer>
 create_uniform_buffers(const vk::raii::Device &device,
-                       const vk::raii::PhysicalDevice &physical_device)
+                       const vk::raii::PhysicalDevice &physical_device,
+                       vk::DeviceSize uniform_buffer_size)
 {
     std::vector<Buffer> uniform_buffers;
     uniform_buffers.reserve(max_frames_in_flight);
@@ -1154,7 +1214,7 @@ create_uniform_buffers(const vk::raii::Device &device,
         uniform_buffers.push_back(
             create_buffer(device,
                           physical_device,
-                          sizeof(Uniform_buffer_object),
+                          uniform_buffer_size,
                           vk::BufferUsageFlagBits::eUniformBuffer,
                           vk::MemoryPropertyFlagBits::eHostVisible |
                               vk::MemoryPropertyFlagBits::eHostCoherent));

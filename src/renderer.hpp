@@ -3,16 +3,21 @@
 
 #include "vulkan_utils.hpp"
 
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+
 /*
- * TODO: Render to an offscreen (lower resolution) image, then blit it to the
- *       swapchain
+ * TODO:
+ *  - Render to an offscreen (lower resolution) image, then blit it to the
+ *    swapchain
+ *  - Integrate ImGui
  */
 
 struct Sync_objects
 {
-    vk::raii::Semaphore image_available_semaphore;
-    vk::raii::Semaphore render_finished_semaphore;
-    vk::raii::Fence in_flight_fence;
+    std::vector<vk::raii::Semaphore> image_available_semaphores;
+    std::vector<vk::raii::Semaphore> render_finished_semaphores;
+    std::vector<vk::raii::Fence> in_flight_fences;
 };
 
 class Renderer
@@ -31,12 +36,16 @@ public:
 
     void resize_framebuffer(std::uint32_t width, std::uint32_t height);
 
-    void draw_frame();
+    void
+    draw_frame(float time, float delta_time, const glm::vec2 &mouse_position);
 
 private:
-    [[nodiscard]] std::vector<Sync_objects> create_sync_objects();
+    [[nodiscard]] Sync_objects create_sync_objects();
 
-    void update_uniform_buffer(std::uint32_t current_image);
+    void update_uniform_buffer(std::uint32_t current_image,
+                               float time,
+                               float delta_time,
+                               const glm::vec2 &mouse_position);
 
     void recreate_swapchain();
 
@@ -67,7 +76,7 @@ private:
     vk::raii::DescriptorPool m_descriptor_pool;
     std::vector<vk::DescriptorSet> m_descriptor_sets;
     vk::raii::CommandBuffers m_command_buffers;
-    std::vector<Sync_objects> m_sync_objects;
+    Sync_objects m_sync_objects;
     std::uint32_t m_current_frame {};
     bool m_framebuffer_resized {};
     std::uint32_t m_framebuffer_width;

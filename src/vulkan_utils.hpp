@@ -10,30 +10,15 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <glm/vec2.hpp>
-#include <glm/vec3.hpp>
+#include <cstdint>
+#include <optional>
+#include <vector>
 
 #ifndef NDEBUG
 #define ENABLE_VALIDATION_LAYERS
 #endif
 
-#include <cstdint>
-#include <optional>
-
 inline constexpr std::uint32_t max_frames_in_flight {2};
-
-struct Vertex
-{
-    glm::vec3 pos;
-    glm::vec2 tex_coord;
-};
-
-struct Uniform_buffer_object
-{
-    glm::vec2 resolution;
-    glm::vec2 mouse_position;
-    float time;
-};
 
 struct Queue_family_indices
 {
@@ -182,13 +167,16 @@ create_descriptor_set_layout(const vk::raii::Device &device);
     const vk::raii::Device &device,
     const vk::raii::DescriptorSetLayout &descriptor_set_layout);
 
-[[nodiscard]] vk::raii::Pipeline
-create_pipeline(const vk::raii::Device &device,
-                const char *vertex_shader_path,
-                const char *fragment_shader_path,
-                const vk::Extent2D &swapchain_extent,
-                vk::PipelineLayout pipeline_layout,
-                vk::RenderPass render_pass);
+[[nodiscard]] vk::raii::Pipeline create_pipeline(
+    const vk::raii::Device &device,
+    const char *vertex_shader_path,
+    const char *fragment_shader_path,
+    const vk::Extent2D &swapchain_extent,
+    vk::PipelineLayout pipeline_layout,
+    vk::RenderPass render_pass,
+    const vk::VertexInputBindingDescription &vertex_binding_description,
+    const vk::VertexInputAttributeDescription *vertex_attribute_descriptions,
+    std::uint32_t num_vertex_attribute_descriptions);
 
 [[nodiscard]] vk::raii::ShaderModule
 create_shader_module(const vk::raii::Device &device,
@@ -209,6 +197,18 @@ create_texture_image(const vk::raii::Device &device,
                      const vk::raii::Queue &graphics_queue,
                      const char *texture_path);
 
+void write_image_to_png(const vk::raii::Device &device,
+                        const vk::raii::PhysicalDevice &physical_device,
+                        const vk::raii::CommandPool &command_pool,
+                        const vk::raii::Queue &graphics_queue,
+                        vk::Image image,
+                        std::uint32_t width,
+                        std::uint32_t height,
+                        vk::ImageLayout layout,
+                        vk::PipelineStageFlags stage,
+                        vk::AccessFlags access,
+                        const char *path);
+
 [[nodiscard]] vk::raii::DescriptorPool
 create_descriptor_pool(const vk::raii::Device &device);
 
@@ -218,14 +218,16 @@ create_descriptor_sets(const vk::raii::Device &device,
                        vk::DescriptorPool descriptor_pool,
                        vk::Sampler sampler,
                        vk::ImageView texture_image_view,
-                       const std::vector<Buffer> &uniform_buffers);
+                       const std::vector<Buffer> &uniform_buffers,
+                       vk::DeviceSize uniform_buffer_size);
 
 [[nodiscard]] Buffer
 create_vertex_buffer(const vk::raii::Device &device,
                      const vk::raii::PhysicalDevice &physical_device,
                      const vk::raii::CommandPool &command_pool,
                      const vk::raii::Queue &graphics_queue,
-                     const std::vector<Vertex> &vertices);
+                     const void *vertex_data,
+                     vk::DeviceSize vertex_buffer_size);
 
 [[nodiscard]] Buffer
 create_index_buffer(const vk::raii::Device &device,
@@ -236,7 +238,8 @@ create_index_buffer(const vk::raii::Device &device,
 
 [[nodiscard]] std::vector<Buffer>
 create_uniform_buffers(const vk::raii::Device &device,
-                       const vk::raii::PhysicalDevice &physical_device);
+                       const vk::raii::PhysicalDevice &physical_device,
+                       vk::DeviceSize uniform_buffer_size);
 
 [[nodiscard]] vk::raii::CommandBuffers
 create_frame_command_buffers(const vk::raii::Device &device,
