@@ -1,11 +1,20 @@
 #ifndef VULKAN_UTILS_HPP
 #define VULKAN_UTILS_HPP
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
 #define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 #define VULKAN_HPP_NO_STRUCT_SETTERS
 #define VULKAN_HPP_NO_UNION_CONSTRUCTORS
 #define VULKAN_HPP_NO_UNION_SETTERS
 #include <vulkan/vulkan_raii.hpp>
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -244,16 +253,5 @@ create_uniform_buffers(const vk::raii::Device &device,
 [[nodiscard]] vk::raii::CommandBuffers
 create_frame_command_buffers(const vk::raii::Device &device,
                              const vk::raii::CommandPool &command_pool);
-
-void record_frame_command_buffer(const vk::raii::CommandBuffer &command_buffer,
-                                 vk::RenderPass render_pass,
-                                 vk::Framebuffer framebuffer,
-                                 vk::Extent2D swapchain_extent,
-                                 vk::Pipeline pipeline,
-                                 vk::PipelineLayout pipeline_layout,
-                                 vk::DescriptorSet descriptor_set,
-                                 vk::Buffer vertex_buffer,
-                                 vk::Buffer index_buffer,
-                                 std::uint32_t num_indices);
 
 #endif // VULKAN_UTILS_HPP

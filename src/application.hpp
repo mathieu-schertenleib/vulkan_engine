@@ -8,6 +8,12 @@
 #include <memory>
 #include <vector>
 
+struct Glfw_context
+{
+    [[nodiscard]] Glfw_context();
+    ~Glfw_context();
+};
+
 class Application
 {
 public:
@@ -23,19 +29,12 @@ public:
     void run();
 
 private:
-    void update(double elapsed_seconds);
-
-    static void
-    cursor_pos_callback(GLFWwindow *window, double xpos, double ypos);
-    static void
-    mouse_button_callback(GLFWwindow *window, int button, int action, int mods);
-    static void
-    scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
     static void key_callback(
         GLFWwindow *window, int key, int scancode, int action, int mods);
     static void
     framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
+    Glfw_context m_context;
     GLFWwindow *m_window;
     std::unique_ptr<Renderer> m_renderer;
 };

@@ -1,6 +1,6 @@
 # vulkan_engine
 
-Vulkan/GLFW experiments
+An experimental Vulkan renderer
 
 ---
 
@@ -28,9 +28,10 @@ cmake --build build
 
 ## External libraries
 
-- [stb](https://github.com/nothings/stb)
-- [GLFW](https://www.glfw.org)
+- [GLFW](https://github.com/glfw/glfw)
 - [GLM](https://github.com/g-truc/glm)
+- [ImGui](https://github.com/ocornut/imgui)
+- [stb](https://github.com/nothings/stb)
 
 ---
 
@@ -38,6 +39,7 @@ cmake --build build
 
 - [Vulkan-Tutorial](https://vulkan-tutorial.com)
 - [Kohi Engine](https://www.youtube.com/playlist?list=PLv8Ddw9K0JPg1BEO-RS-0MYs423cvLVtj)
+- [Sascha Willems Vulkan examples](https://github.com/SaschaWillems/Vulkan)
 
 ---
 

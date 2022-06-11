@@ -46,13 +46,19 @@ endif ()
 
 add_executable(vulkan_engine
         src/main.cpp
-        src/application.cpp src/application.hpp
-        src/renderer.cpp src/renderer.hpp
-        src/utils.cpp src/utils.hpp
-        src/vulkan_utils.cpp src/vulkan_utils.hpp
+        src/application.cpp
+        src/renderer.cpp
+        src/utils.cpp
+        src/vulkan_utils.cpp
         external/stb_image.h external/stb_image_write.h
+        external/imgui/backends/imgui_impl_glfw.cpp
+        external/imgui/backends/imgui_impl_vulkan.cpp
+        external/imgui/imgui.cpp
+        external/imgui/imgui_draw.cpp
+        external/imgui/imgui_tables.cpp
+        external/imgui/imgui_widgets.cpp
         )
-target_include_directories(vulkan_engine PRIVATE external)
+target_include_directories(vulkan_engine PRIVATE external external/imgui external/imgui/backends)
 target_compile_options(vulkan_engine PRIVATE ${PROJECT_OPTIONS})
 target_compile_features(vulkan_engine PRIVATE cxx_std_20)
 

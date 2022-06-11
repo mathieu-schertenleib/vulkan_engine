@@ -3,13 +3,20 @@
 
 #include "vulkan_utils.hpp"
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#endif
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 /*
  * TODO:
- *  - Render to an offscreen (lower resolution) image, then blit it to the
- *    swapchain
+ *  - Render to an offscreen (lower resolution) image, then sample it from the
+ *    final fragment shader
  *  - Integrate ImGui
  */
 
@@ -46,6 +53,18 @@ private:
                                float time,
                                float delta_time,
                                const glm::vec2 &mouse_position);
+
+    void
+    record_frame_command_buffer(const vk::raii::CommandBuffer &command_buffer,
+                                vk::RenderPass render_pass,
+                                vk::Framebuffer framebuffer,
+                                vk::Extent2D swapchain_extent,
+                                vk::Pipeline pipeline,
+                                vk::PipelineLayout pipeline_layout,
+                                vk::DescriptorSet descriptor_set,
+                                vk::Buffer vertex_buffer,
+                                vk::Buffer index_buffer,
+                                std::uint32_t num_indices);
 
     void recreate_swapchain();
 

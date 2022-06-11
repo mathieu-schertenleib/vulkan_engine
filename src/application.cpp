@@ -7,26 +7,30 @@ namespace
 
 void glfw_error_callback(int error [[maybe_unused]], const char *description)
 {
-    std::cerr << description << std::endl;
+    std::cerr << "GLFW error " << error << ": " << description << std::endl;
 }
 
 } // namespace
 
-Application::Application()
+Glfw_context::Glfw_context()
 {
     glfwSetErrorCallback(glfw_error_callback);
-
     glfwInit();
+}
 
+Glfw_context::~Glfw_context()
+{
+    glfwTerminate();
+}
+
+Application::Application()
+{
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    m_window = glfwCreateWindow(640, 480, "Vulkan engine", nullptr, nullptr);
+    m_window = glfwCreateWindow(1280, 720, "Vulkan engine", nullptr, nullptr);
 
     glfwSetWindowUserPointer(m_window, this);
 
-    glfwSetCursorPosCallback(m_window, cursor_pos_callback);
-    glfwSetMouseButtonCallback(m_window, mouse_button_callback);
-    glfwSetScrollCallback(m_window, scroll_callback);
     glfwSetKeyCallback(m_window, key_callback);
     glfwSetFramebufferSizeCallback(m_window, framebuffer_size_callback);
 
@@ -42,14 +46,12 @@ Application::Application()
 Application::~Application()
 {
     glfwDestroyWindow(m_window);
-    glfwTerminate();
 }
 
 void Application::run()
 {
     int frames {};
     const auto start_time = glfwGetTime();
-    auto last_second = start_time;
     auto last_frame_time = start_time;
 
     while (!glfwWindowShouldClose(m_window))
@@ -61,8 +63,6 @@ void Application::run()
         last_frame_time = now;
         const auto total_time = now - start_time;
 
-        update(delta_time);
-
         double x, y;
         glfwGetCursorPos(m_window, &x, &y);
 
@@ -71,43 +71,11 @@ void Application::run()
                                {static_cast<float>(x), static_cast<float>(y)});
 
         ++frames;
-
-        if (now - last_second >= 1.0)
-        {
-            std::ostringstream title_stream;
-            title_stream << "Vulkan engine - " << frames << " fps";
-            glfwSetWindowTitle(m_window, title_stream.str().c_str());
-            last_second = now;
-            frames = 0;
-        }
     }
 }
 
-void Application::update(double elapsed_seconds)
-{
-}
-
-void Application::cursor_pos_callback(GLFWwindow *window,
-                                      double xpos,
-                                      double ypos)
-{
-}
-
-void Application::mouse_button_callback(GLFWwindow *window,
-                                        int button,
-                                        int action,
-                                        int mods)
-{
-}
-
-void Application::scroll_callback(GLFWwindow *window,
-                                  double xoffset,
-                                  double yoffset)
-{
-}
-
 void Application::key_callback(
-    GLFWwindow *window, int key, int scancode, int action, int mods)
+    GLFWwindow *window, int key, int /*scancode*/, int action, int /*mods*/)
 {
     if (action == GLFW_PRESS && key == GLFW_KEY_F)
     {

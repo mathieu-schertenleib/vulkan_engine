@@ -2,6 +2,19 @@
 
 #include "utils.hpp"
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+#endif
+#include "imgui_impl_vulkan.h"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+#include <iostream>
+
 namespace
 {
 
@@ -46,6 +59,14 @@ const std::vector<Vertex> vertices {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
                                     {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
 
 const std::vector<std::uint16_t> indices {0, 1, 2, 2, 3, 0};
+
+void check_vk_result(VkResult result)
+{
+    if (result != VK_SUCCESS)
+        throw std::runtime_error(
+            "Vulkan error in ImGui: result is " +
+            vk::to_string(static_cast<vk::Result>(result)));
+}
 
 } // namespace
 
@@ -125,11 +146,47 @@ Renderer::Renderer(GLFWwindow *window,
     , m_framebuffer_width {width}
     , m_framebuffer_height {height}
 {
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+    ImGui_ImplVulkan_InitInfo init_info {};
+    init_info.Instance = *m_instance;
+    init_info.PhysicalDevice = *m_physical_device;
+    init_info.Device = *m_device;
+    init_info.QueueFamily = m_queue_family_indices.graphics;
+    init_info.Queue = *m_graphics_queue;
+    init_info.DescriptorPool = *m_descriptor_pool;
+    init_info.Subpass = 0;
+    init_info.MinImageCount = 2;
+    init_info.ImageCount =
+        static_cast<std::uint32_t>(m_swapchain_images.size());
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.CheckVkResultFn = &check_vk_result;
+    ImGui_ImplVulkan_Init(&init_info, *m_render_pass);
+
+    auto &io = ImGui::GetIO();
+    ImFontConfig font_config {};
+    font_config.SizePixels = 30.0f;
+    io.Fonts->AddFontDefault(&font_config);
+
+    const auto command_buffer =
+        begin_one_time_submit_command_buffer(m_device, m_command_pool);
+    ImGui_ImplVulkan_CreateFontsTexture(*command_buffer);
+    end_one_time_submit_command_buffer(command_buffer, m_graphics_queue);
+    m_device.waitIdle();
+    ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 
 Renderer::~Renderer()
 {
     m_device.waitIdle();
+
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 }
 
 Sync_objects Renderer::create_sync_objects()
@@ -169,6 +226,54 @@ void Renderer::update_uniform_buffer(std::uint32_t current_image,
         m_uniform_buffers[current_image].memory.mapMemory(0, sizeof(ubo));
     std::memcpy(data, &ubo, sizeof(ubo));
     m_uniform_buffers[current_image].memory.unmapMemory();
+}
+
+void Renderer::record_frame_command_buffer(
+    const vk::raii::CommandBuffer &command_buffer,
+    vk::RenderPass render_pass,
+    vk::Framebuffer framebuffer,
+    vk::Extent2D swapchain_extent,
+    vk::Pipeline pipeline,
+    vk::PipelineLayout pipeline_layout,
+    vk::DescriptorSet descriptor_set,
+    vk::Buffer vertex_buffer,
+    vk::Buffer index_buffer,
+    std::uint32_t num_indices)
+{
+    command_buffer.begin({});
+
+    constexpr vk::ClearValue clear_color_value {
+        .color = {{{0.0f, 0.0f, 0.0f, 1.0f}}}};
+
+    const vk::RenderPassBeginInfo render_pass_begin_info {
+        .renderPass = render_pass,
+        .framebuffer = framebuffer,
+        .renderArea = {.offset = {0, 0}, .extent = swapchain_extent},
+        .clearValueCount = 1,
+        .pClearValues = &clear_color_value};
+
+    command_buffer.beginRenderPass(render_pass_begin_info,
+                                   vk::SubpassContents::eInline);
+
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+
+    command_buffer.bindVertexBuffers(0, vertex_buffer, {0});
+
+    command_buffer.bindIndexBuffer(index_buffer, 0, vk::IndexType::eUint16);
+
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                      pipeline_layout,
+                                      0,
+                                      descriptor_set,
+                                      {});
+
+    command_buffer.drawIndexed(num_indices, 1, 0, 0, 0);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *command_buffer);
+
+    command_buffer.endRenderPass();
+
+    command_buffer.end();
 }
 
 void Renderer::recreate_swapchain()
@@ -212,6 +317,16 @@ void Renderer::draw_frame(float time,
                           float delta_time,
                           const glm::vec2 &mouse_position)
 {
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::Begin("Stats");
+    ImGui::Text("%.3f ms/frame, %.1f fps",
+                1000.0 / static_cast<double>(ImGui::GetIO().Framerate),
+                static_cast<double>(ImGui::GetIO().Framerate));
+    ImGui::End();
+
     const auto wait_result = m_device.waitForFences(
         *m_sync_objects.in_flight_fences[m_current_frame],
         VK_TRUE,
@@ -241,6 +356,8 @@ void Renderer::draw_frame(float time,
     m_device.resetFences(*m_sync_objects.in_flight_fences[m_current_frame]);
 
     m_command_buffers[m_current_frame].reset();
+
+    ImGui::Render();
 
     record_frame_command_buffer(m_command_buffers[m_current_frame],
                                 *m_render_pass,

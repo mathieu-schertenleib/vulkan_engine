@@ -2,10 +2,22 @@
 
 #include "utils.hpp"
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#pragma GCC diagnostic ignored "-Wduplicated-branches"
+#endif
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <iostream>
 #include <limits>
@@ -1016,11 +1028,8 @@ void write_image_to_png(const vk::raii::Device &device,
                                     access,
                                     vk::AccessFlagBits::eTransferRead);
 
-    command_copy_image_to_buffer(command_buffer,
-                                 image,
-                                 *staging_buffer.buffer,
-                                 static_cast<std::uint32_t>(width),
-                                 static_cast<std::uint32_t>(height));
+    command_copy_image_to_buffer(
+        command_buffer, image, *staging_buffer.buffer, width, height);
 
     command_transition_image_layout(command_buffer,
                                     image,
@@ -1051,7 +1060,25 @@ void write_image_to_png(const vk::raii::Device &device,
 
 vk::raii::DescriptorPool create_descriptor_pool(const vk::raii::Device &device)
 {
-    constexpr std::array pool_sizes {
+    constexpr vk::DescriptorPoolSize pool_sizes[] {
+        {vk::DescriptorType::eSampler, 1000},
+        {vk::DescriptorType::eCombinedImageSampler, 1000},
+        {vk::DescriptorType::eSampledImage, 1000},
+        {vk::DescriptorType::eStorageImage, 1000},
+        {vk::DescriptorType::eUniformTexelBuffer, 1000},
+        {vk::DescriptorType::eStorageTexelBuffer, 1000},
+        {vk::DescriptorType::eUniformBuffer, 1000},
+        {vk::DescriptorType::eStorageBuffer, 1000},
+        {vk::DescriptorType::eUniformBufferDynamic, 1000},
+        {vk::DescriptorType::eStorageBufferDynamic, 1000},
+        {vk::DescriptorType::eInputAttachment, 1000}};
+    const vk::DescriptorPoolCreateInfo create_info {
+        .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        .maxSets = 1000 * std::size(pool_sizes),
+        .poolSizeCount = static_cast<std::uint32_t>(std::size(pool_sizes)),
+        .pPoolSizes = pool_sizes};
+
+    /*constexpr std::array pool_sizes {
         vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer,
                                 .descriptorCount = max_frames_in_flight},
         vk::DescriptorPoolSize {.type =
@@ -1061,7 +1088,7 @@ vk::raii::DescriptorPool create_descriptor_pool(const vk::raii::Device &device)
     const vk::DescriptorPoolCreateInfo create_info {
         .maxSets = max_frames_in_flight,
         .poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size()),
-        .pPoolSizes = pool_sizes.data()};
+        .pPoolSizes = pool_sizes.data()};*/
 
     return {device, create_info};
 }
@@ -1136,8 +1163,7 @@ Buffer create_vertex_buffer(const vk::raii::Device &device,
                           vk::MemoryPropertyFlagBits::eHostCoherent);
 
     auto *const data = staging_buffer.memory.mapMemory(0, vertex_buffer_size);
-    std::memcpy(
-        data, vertex_data, static_cast<std::size_t>(vertex_buffer_size));
+    std::memcpy(data, vertex_data, vertex_buffer_size);
     staging_buffer.memory.unmapMemory();
 
     auto vertex_buffer =
@@ -1233,49 +1259,4 @@ create_frame_command_buffers(const vk::raii::Device &device,
         .commandBufferCount = max_frames_in_flight};
 
     return {device, allocate_info};
-}
-
-void record_frame_command_buffer(const vk::raii::CommandBuffer &command_buffer,
-                                 vk::RenderPass render_pass,
-                                 vk::Framebuffer framebuffer,
-                                 vk::Extent2D swapchain_extent,
-                                 vk::Pipeline pipeline,
-                                 vk::PipelineLayout pipeline_layout,
-                                 vk::DescriptorSet descriptor_set,
-                                 vk::Buffer vertex_buffer,
-                                 vk::Buffer index_buffer,
-                                 std::uint32_t num_indices)
-{
-    command_buffer.begin({});
-
-    constexpr vk::ClearValue clear_color_value {
-        .color = {{{0.0f, 0.0f, 0.0f, 1.0f}}}};
-
-    const vk::RenderPassBeginInfo render_pass_begin_info {
-        .renderPass = render_pass,
-        .framebuffer = framebuffer,
-        .renderArea = {.offset = {0, 0}, .extent = swapchain_extent},
-        .clearValueCount = 1,
-        .pClearValues = &clear_color_value};
-
-    command_buffer.beginRenderPass(render_pass_begin_info,
-                                   vk::SubpassContents::eInline);
-
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
-
-    command_buffer.bindVertexBuffers(0, vertex_buffer, {0});
-
-    command_buffer.bindIndexBuffer(index_buffer, 0, vk::IndexType::eUint16);
-
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                      pipeline_layout,
-                                      0,
-                                      descriptor_set,
-                                      {});
-
-    command_buffer.drawIndexed(num_indices, 1, 0, 0, 0);
-
-    command_buffer.endRenderPass();
-
-    command_buffer.end();
 }
