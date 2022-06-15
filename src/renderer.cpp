@@ -60,6 +60,14 @@ const std::vector<Vertex> vertices {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
 
 const std::vector<std::uint16_t> indices {0, 1, 2, 2, 3, 0};
 
+const std::vector<Vertex> offscreen_vertices {
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
+
+const std::vector<std::uint16_t> offscreen_indices {0, 1, 2, 2, 3, 0};
+
 void check_vk_result(VkResult result)
 {
     if (result != VK_SUCCESS)
@@ -68,7 +76,17 @@ void check_vk_result(VkResult result)
             vk::to_string(static_cast<vk::Result>(result)));
 }
 
+inline constexpr auto offscreen_vertex_shader =
+    "shaders/spv/offscreen.vert.spv";
+inline constexpr auto offscreen_fragment_shader =
+    "shaders/spv/offscreen.frag.spv";
+inline constexpr auto final_vertex_shader = "shaders/spv/final.vert.spv";
+inline constexpr auto final_fragment_shader = "shaders/spv/final.frag.spv";
+
 } // namespace
+
+// NOTE: inspired by
+// https://github.com/SaschaWillems/Vulkan/blob/master/examples/offscreen/offscreen.cpp
 
 Renderer::Renderer(GLFWwindow *window,
                    std::uint32_t width,
@@ -94,14 +112,76 @@ Renderer::Renderer(GLFWwindow *window,
     , m_swapchain_images {get_swapchain_images(m_swapchain.swapchain)}
     , m_swapchain_image_views {create_swapchain_image_views(
           m_device, m_swapchain_images, m_swapchain.format)}
-    , m_render_pass {create_render_pass(
-          m_device, m_swapchain.format, vk::ImageLayout::ePresentSrcKHR)}
+    , m_sampler {create_sampler(m_device)}
+    , m_descriptor_pool {create_descriptor_pool(m_device)}
+    , m_command_pool {create_command_pool(m_device,
+                                          m_queue_family_indices.graphics)}
+    , m_offscreen_width {160}
+    , m_offscreen_height {90}
+    , m_offscreen_color_attachment {create_offscreen_color_attachment(
+          m_device,
+          m_physical_device,
+          m_command_pool,
+          m_graphics_queue,
+          m_offscreen_width,
+          m_offscreen_height,
+          m_swapchain.format)}
+    , m_offscreen_render_pass {create_offscreen_render_pass(m_device,
+                                                            m_swapchain.format)}
+    , m_offscreen_descriptor_set_layout {create_descriptor_set_layout(m_device)}
+    , m_offscreen_pipeline_layout {create_pipeline_layout(
+          m_device, m_offscreen_descriptor_set_layout)}
+    , m_offscreen_pipeline {create_pipeline(
+          m_device,
+          offscreen_vertex_shader,
+          offscreen_fragment_shader,
+          {m_offscreen_width, m_offscreen_height},
+          *m_offscreen_pipeline_layout,
+          *m_offscreen_render_pass,
+          vertex_binding_description,
+          vertex_attribute_descriptions.data(),
+          vertex_attribute_descriptions.size())}
+    , m_offscreen_framebuffer {create_framebuffer(
+          m_device,
+          m_offscreen_color_attachment.view,
+          *m_offscreen_render_pass,
+          m_offscreen_width,
+          m_offscreen_height)}
+    , m_offscreen_texture_image {create_texture_image(
+          m_device,
+          m_physical_device,
+          m_command_pool,
+          m_graphics_queue,
+          "assets/ray_traced_scene.png")}
+    , m_offscreen_vertex_buffer {create_vertex_buffer(
+          m_device,
+          m_physical_device,
+          m_command_pool,
+          m_graphics_queue,
+          offscreen_vertices.data(),
+          offscreen_vertices.size() * sizeof(Vertex))}
+    , m_offscreen_index_buffer {create_index_buffer(m_device,
+                                                    m_physical_device,
+                                                    m_command_pool,
+                                                    m_graphics_queue,
+                                                    offscreen_indices)}
+    , m_offscreen_uniform_buffer {create_uniform_buffer(
+          m_device, m_physical_device, sizeof(Uniform_buffer_object))}
+    , m_offscreen_descriptor_set {create_offscreen_descriptor_set(
+          m_device,
+          *m_offscreen_descriptor_set_layout,
+          *m_descriptor_pool,
+          *m_sampler,
+          *m_offscreen_texture_image.view,
+          m_offscreen_uniform_buffer,
+          sizeof(Uniform_buffer_object))}
+    , m_render_pass {create_render_pass(m_device, m_swapchain.format)}
     , m_descriptor_set_layout {create_descriptor_set_layout(m_device)}
     , m_pipeline_layout {create_pipeline_layout(m_device,
                                                 m_descriptor_set_layout)}
     , m_pipeline {create_pipeline(m_device,
-                                  "shaders/spv/final.vert.spv",
-                                  "shaders/spv/final.frag.spv",
+                                  final_vertex_shader,
+                                  final_fragment_shader,
                                   m_swapchain.extent,
                                   *m_pipeline_layout,
                                   *m_render_pass,
@@ -113,14 +193,6 @@ Renderer::Renderer(GLFWwindow *window,
                                           *m_render_pass,
                                           m_swapchain.extent.width,
                                           m_swapchain.extent.height)}
-    , m_command_pool {create_command_pool(m_device,
-                                          m_queue_family_indices.graphics)}
-    , m_sampler {create_sampler(m_device)}
-    , m_texture_image {create_texture_image(m_device,
-                                            m_physical_device,
-                                            m_command_pool,
-                                            m_graphics_queue,
-                                            "assets/ray_traced_scene.png")}
     , m_vertex_buffer {create_vertex_buffer(m_device,
                                             m_physical_device,
                                             m_command_pool,
@@ -134,75 +206,19 @@ Renderer::Renderer(GLFWwindow *window,
                                           indices)}
     , m_uniform_buffers {create_uniform_buffers(
           m_device, m_physical_device, sizeof(Uniform_buffer_object))}
-    , m_descriptor_pool {create_descriptor_pool(m_device)}
-    , m_descriptor_sets {create_descriptor_sets(m_device,
-                                                *m_descriptor_set_layout,
-                                                *m_descriptor_pool,
-                                                *m_sampler,
-                                                *m_texture_image.view,
-                                                m_uniform_buffers,
-                                                sizeof(Uniform_buffer_object))}
-    , m_command_buffers {create_draw_command_buffers(m_device, m_command_pool)}
+    , m_descriptor_sets {create_descriptor_sets(
+          m_device,
+          *m_descriptor_set_layout,
+          *m_descriptor_pool,
+          *m_sampler,
+          *m_offscreen_color_attachment.view,
+          m_uniform_buffers,
+          sizeof(Uniform_buffer_object))}
+    , m_draw_command_buffers {create_draw_command_buffers(m_device,
+                                                          m_command_pool)}
     , m_sync_objects {create_sync_objects()}
     , m_framebuffer_width {width}
     , m_framebuffer_height {height}
-    , m_offscreen_width {160}
-    , m_offscreen_height {90}
-    , m_offscreen_color_attachment {create_image(
-          m_device,
-          m_physical_device,
-          m_offscreen_width,
-          m_offscreen_height,
-          m_swapchain.format,
-          vk::ImageUsageFlagBits::eColorAttachment,
-          vk::MemoryPropertyFlagBits::eDeviceLocal)}
-    , m_offscreen_render_pass {create_render_pass(
-          m_device,
-          m_swapchain.format,
-          vk::ImageLayout::eColorAttachmentOptimal)}
-    , m_offscreen_descriptor_set_layout {create_descriptor_set_layout(m_device)}
-    , m_offscreen_pipeline_layout {create_pipeline_layout(
-          m_device, m_offscreen_descriptor_set_layout)}
-    , m_offscreen_pipeline {create_pipeline(
-          m_device,
-          "shaders/spv/offscreen.vert.spv",
-          "shaders/spv/offscreen.frag.spv",
-          {m_offscreen_width, m_offscreen_height},
-          *m_offscreen_pipeline_layout,
-          *m_offscreen_render_pass,
-          vertex_binding_description,
-          vertex_attribute_descriptions.data(),
-          vertex_attribute_descriptions.size())}
-    , m_offscreen_framebuffer {create_framebuffer(
-          m_device,
-          m_offscreen_color_attachment.view,
-          *m_offscreen_render_pass,
-          m_offscreen_width,
-          m_offscreen_height)}
-    , m_offscreen_vertex_buffer {create_vertex_buffer(m_device,
-                                                      m_physical_device,
-                                                      m_command_pool,
-                                                      m_graphics_queue,
-                                                      vertices.data(),
-                                                      vertices.size() *
-                                                          sizeof(Vertex))}
-    , m_offscreen_index_buffer {create_index_buffer(m_device,
-                                                    m_physical_device,
-                                                    m_command_pool,
-                                                    m_graphics_queue,
-                                                    indices)}
-    , m_offscreen_uniform_buffer {create_uniform_buffer(
-          m_device, m_physical_device, sizeof(Uniform_buffer_object))}
-    , m_descriptor_set {create_offscreen_descriptor_set(
-          m_device,
-          *m_offscreen_descriptor_set_layout,
-          *m_descriptor_pool,
-          *m_sampler,
-          *m_texture_image.view,
-          m_offscreen_uniform_buffer,
-          sizeof(Uniform_buffer_object))}
-    , m_offscreen_command_buffer {
-          create_draw_command_buffer(m_device, m_command_pool)}
 {
     ImGui_ImplGlfw_InitForVulkan(window, true);
     ImGui_ImplVulkan_InitInfo init_info {};
@@ -275,50 +291,88 @@ void Renderer::update_uniform_buffer(std::uint32_t current_image,
     m_uniform_buffers[current_image].memory.unmapMemory();
 }
 
-void Renderer::record_draw_command_buffer(
-    const vk::raii::CommandBuffer &command_buffer,
-    vk::RenderPass render_pass,
-    vk::Framebuffer framebuffer,
-    vk::Extent2D swapchain_extent,
-    vk::Pipeline pipeline,
-    vk::PipelineLayout pipeline_layout,
-    vk::DescriptorSet descriptor_set,
-    vk::Buffer vertex_buffer,
-    vk::Buffer index_buffer,
-    std::uint32_t num_indices)
+void Renderer::record_draw_command_buffer(std::uint32_t image_index)
 {
+    const auto &command_buffer = m_draw_command_buffers[m_current_frame];
+
     command_buffer.begin({});
 
-    constexpr vk::ClearValue clear_color_value {
-        .color = {{{0.0f, 0.0f, 0.0f, 1.0f}}}};
+    // Offscreen pass
+    {
+        constexpr vk::ClearValue clear_color_value {
+            .color = {{{0.0f, 0.0f, 0.0f, 1.0f}}}};
 
-    const vk::RenderPassBeginInfo render_pass_begin_info {
-        .renderPass = render_pass,
-        .framebuffer = framebuffer,
-        .renderArea = {.offset = {0, 0}, .extent = swapchain_extent},
-        .clearValueCount = 1,
-        .pClearValues = &clear_color_value};
+        const vk::RenderPassBeginInfo render_pass_begin_info {
+            .renderPass = *m_offscreen_render_pass,
+            .framebuffer = *m_offscreen_framebuffer,
+            .renderArea = {.offset = {0, 0},
+                           .extent = {m_offscreen_width, m_offscreen_height}},
+            .clearValueCount = 1,
+            .pClearValues = &clear_color_value};
 
-    command_buffer.beginRenderPass(render_pass_begin_info,
-                                   vk::SubpassContents::eInline);
+        command_buffer.beginRenderPass(render_pass_begin_info,
+                                       vk::SubpassContents::eInline);
 
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                          *m_offscreen_pipeline_layout,
+                                          0,
+                                          m_offscreen_descriptor_set,
+                                          {});
 
-    command_buffer.bindVertexBuffers(0, vertex_buffer, {0});
+        command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                                    *m_offscreen_pipeline);
 
-    command_buffer.bindIndexBuffer(index_buffer, 0, vk::IndexType::eUint16);
+        command_buffer.bindVertexBuffers(
+            0, *m_offscreen_vertex_buffer.buffer, {0});
 
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                      pipeline_layout,
-                                      0,
-                                      descriptor_set,
-                                      {});
+        command_buffer.bindIndexBuffer(
+            *m_offscreen_index_buffer.buffer, 0, vk::IndexType::eUint16);
 
-    command_buffer.drawIndexed(num_indices, 1, 0, 0, 0);
+        command_buffer.drawIndexed(
+            static_cast<std::uint32_t>(offscreen_indices.size()), 1, 0, 0, 0);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *command_buffer);
+        command_buffer.endRenderPass();
+    }
 
-    command_buffer.endRenderPass();
+    // NOTE: explicit synchronization not required between the render passes, as
+    // it is done implicitly via subpass dependencies
+
+    // Final pass
+    {
+        constexpr vk::ClearValue clear_color_value {
+            .color = {{{0.0f, 0.0f, 0.0f, 1.0f}}}};
+
+        const vk::RenderPassBeginInfo render_pass_begin_info {
+            .renderPass = *m_render_pass,
+            .framebuffer = *m_framebuffers[image_index],
+            .renderArea = {.offset = {0, 0}, .extent = m_swapchain.extent},
+            .clearValueCount = 1,
+            .pClearValues = &clear_color_value};
+
+        command_buffer.beginRenderPass(render_pass_begin_info,
+                                       vk::SubpassContents::eInline);
+
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                          *m_pipeline_layout,
+                                          0,
+                                          m_descriptor_sets[m_current_frame],
+                                          {});
+
+        command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                                    *m_pipeline);
+
+        command_buffer.bindVertexBuffers(0, *m_vertex_buffer.buffer, {0});
+
+        command_buffer.bindIndexBuffer(
+            *m_index_buffer.buffer, 0, vk::IndexType::eUint16);
+
+        command_buffer.drawIndexed(
+            static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
+
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *command_buffer);
+
+        command_buffer.endRenderPass();
+    }
 
     command_buffer.end();
 }
@@ -341,13 +395,12 @@ void Renderer::recreate_swapchain()
     m_swapchain_images = get_swapchain_images(m_swapchain.swapchain);
     m_swapchain_image_views = create_swapchain_image_views(
         m_device, m_swapchain_images, m_swapchain.format);
-    m_render_pass = create_render_pass(
-        m_device, m_swapchain.format, vk::ImageLayout::ePresentSrcKHR);
+    m_render_pass = create_render_pass(m_device, m_swapchain.format);
     m_pipeline_layout =
         create_pipeline_layout(m_device, m_descriptor_set_layout);
     m_pipeline = create_pipeline(m_device,
-                                 "shaders/spv/shader.vert.spv",
-                                 "shaders/spv/shader.frag.spv",
+                                 final_vertex_shader,
+                                 final_fragment_shader,
                                  m_swapchain.extent,
                                  *m_pipeline_layout,
                                  *m_render_pass,
@@ -414,18 +467,9 @@ void Renderer::draw_frame(float time,
 
     m_device.resetFences(*m_sync_objects.in_flight_fences[m_current_frame]);
 
-    m_command_buffers[m_current_frame].reset();
+    m_draw_command_buffers[m_current_frame].reset();
 
-    record_draw_command_buffer(m_command_buffers[m_current_frame],
-                               *m_render_pass,
-                               *m_framebuffers[image_index],
-                               m_swapchain.extent,
-                               *m_pipeline,
-                               *m_pipeline_layout,
-                               m_descriptor_sets[m_current_frame],
-                               *m_vertex_buffer.buffer,
-                               *m_index_buffer.buffer,
-                               static_cast<std::uint32_t>(indices.size()));
+    record_draw_command_buffer(image_index);
 
     const vk::PipelineStageFlags wait_stages[] {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};
@@ -436,7 +480,7 @@ void Renderer::draw_frame(float time,
             &*m_sync_objects.image_available_semaphores[m_current_frame],
         .pWaitDstStageMask = wait_stages,
         .commandBufferCount = 1,
-        .pCommandBuffers = &*m_command_buffers[m_current_frame],
+        .pCommandBuffers = &*m_draw_command_buffers[m_current_frame],
         .signalSemaphoreCount = 1,
         .pSignalSemaphores =
             &*m_sync_objects.render_finished_semaphores[m_current_frame]};

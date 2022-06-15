@@ -167,8 +167,11 @@ void command_transition_image_layout(
 
 [[nodiscard]] vk::raii::RenderPass
 create_render_pass(const vk::raii::Device &device,
-                   vk::Format color_attachment_format,
-                   vk::ImageLayout final_color_attachment_layout);
+                   vk::Format color_attachment_format);
+
+[[nodiscard]] vk::raii::RenderPass
+create_offscreen_render_pass(const vk::raii::Device &device,
+                             vk::Format color_attachment_format);
 
 [[nodiscard]] vk::raii::DescriptorSetLayout
 create_descriptor_set_layout(const vk::raii::Device &device);
@@ -281,5 +284,14 @@ create_draw_command_buffer(const vk::raii::Device &device,
 [[nodiscard]] vk::raii::CommandBuffers
 create_draw_command_buffers(const vk::raii::Device &device,
                             const vk::raii::CommandPool &command_pool);
+
+[[nodiscard]] Vulkan_image create_offscreen_color_attachment(
+    const vk::raii::Device &device,
+    const vk::raii::PhysicalDevice &physical_device,
+    const vk::raii::CommandPool &command_pool,
+    const vk::raii::Queue &graphics_queue,
+    std::uint32_t width,
+    std::uint32_t height,
+    vk::Format format);
 
 #endif // VULKAN_UTILS_HPP

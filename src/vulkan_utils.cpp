@@ -667,10 +667,8 @@ void command_transition_image_layout(
         src_stage_mask, dst_stage_mask, {}, {}, {}, memory_barrier);
 }
 
-vk::raii::RenderPass
-create_render_pass(const vk::raii::Device &device,
-                   vk::Format color_attachment_format,
-                   vk::ImageLayout final_color_attachment_layout)
+vk::raii::RenderPass create_render_pass(const vk::raii::Device &device,
+                                        vk::Format color_attachment_format)
 {
     const vk::AttachmentDescription color_attachment_description {
         .format = color_attachment_format,
@@ -705,6 +703,56 @@ create_render_pass(const vk::raii::Device &device,
         .pSubpasses = &subpass_description,
         .dependencyCount = 1,
         .pDependencies = &subpass_dependency};
+
+    return {device, create_info};
+}
+
+vk::raii::RenderPass
+create_offscreen_render_pass(const vk::raii::Device &device,
+                             vk::Format color_attachment_format)
+{
+    const vk::AttachmentDescription color_attachment_description {
+        .format = color_attachment_format,
+        .samples = vk::SampleCountFlagBits::e1,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+        .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+        .initialLayout = vk::ImageLayout::eUndefined,
+        .finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+    constexpr vk::AttachmentReference color_attachment_reference {
+        .attachment = 0, .layout = vk::ImageLayout::eColorAttachmentOptimal};
+
+    const vk::SubpassDescription subpass_description {
+        .pipelineBindPoint = vk::PipelineBindPoint::eGraphics,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment_reference};
+
+    // Use subpass dependencies for layout transitions
+    constexpr vk::SubpassDependency subpass_dependencies[] {
+        {.srcSubpass = VK_SUBPASS_EXTERNAL,
+         .dstSubpass = 0,
+         .srcStageMask = vk::PipelineStageFlagBits::eFragmentShader,
+         .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+         .srcAccessMask = vk::AccessFlagBits::eShaderRead,
+         .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+         .dependencyFlags = vk::DependencyFlagBits::eByRegion},
+        {.srcSubpass = 0,
+         .dstSubpass = VK_SUBPASS_EXTERNAL,
+         .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+         .dstStageMask = vk::PipelineStageFlagBits::eFragmentShader,
+         .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+         .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+         .dependencyFlags = vk::DependencyFlagBits::eByRegion}};
+
+    const vk::RenderPassCreateInfo create_info {
+        .attachmentCount = 1,
+        .pAttachments = &color_attachment_description,
+        .subpassCount = 1,
+        .pSubpasses = &subpass_description,
+        .dependencyCount = std::size(subpass_dependencies),
+        .pDependencies = subpass_dependencies};
 
     return {device, create_info};
 }
@@ -1084,18 +1132,6 @@ vk::raii::DescriptorPool create_descriptor_pool(const vk::raii::Device &device)
         .poolSizeCount = static_cast<std::uint32_t>(std::size(pool_sizes)),
         .pPoolSizes = pool_sizes};
 
-    /*constexpr std::array pool_sizes {
-        vk::DescriptorPoolSize {.type = vk::DescriptorType::eUniformBuffer,
-                                .descriptorCount = max_frames_in_flight},
-        vk::DescriptorPoolSize {.type =
-                                    vk::DescriptorType::eCombinedImageSampler,
-                                .descriptorCount = max_frames_in_flight}};
-
-    const vk::DescriptorPoolCreateInfo create_info {
-        .maxSets = max_frames_in_flight,
-        .poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size()),
-        .pPoolSizes = pool_sizes.data()};*/
-
     return {device, create_info};
 }
 
@@ -1336,4 +1372,40 @@ create_draw_command_buffers(const vk::raii::Device &device,
         .commandBufferCount = max_frames_in_flight};
 
     return {device, allocate_info};
+}
+
+Vulkan_image create_offscreen_color_attachment(
+    const vk::raii::Device &device,
+    const vk::raii::PhysicalDevice &physical_device,
+    const vk::raii::CommandPool &command_pool,
+    const vk::raii::Queue &graphics_queue,
+    std::uint32_t width,
+    std::uint32_t height,
+    vk::Format format)
+{
+    auto image = create_image(device,
+                              physical_device,
+                              width,
+                              height,
+                              format,
+                              vk::ImageUsageFlagBits::eColorAttachment |
+                                  vk::ImageUsageFlagBits::eSampled,
+                              vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    const auto command_buffer =
+        begin_one_time_submit_command_buffer(device, command_pool);
+
+    command_transition_image_layout(
+        command_buffer,
+        *image.image,
+        vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::PipelineStageFlagBits::eTopOfPipe,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput,
+        {},
+        vk::AccessFlagBits::eColorAttachmentWrite);
+
+    end_one_time_submit_command_buffer(command_buffer, graphics_queue);
+
+    return image;
 }
