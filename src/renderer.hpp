@@ -13,11 +13,11 @@
 #pragma GCC diagnostic pop
 #endif
 
-/*
- * TODO:
- *  - Render to an offscreen (lower resolution) image, then sample it from the
- *    final fragment shader
- */
+struct Vertex
+{
+    glm::vec3 pos;
+    glm::vec2 tex_coord;
+};
 
 struct Sync_objects
 {
@@ -34,24 +34,15 @@ public:
                            std::uint32_t height);
     ~Renderer();
 
-    Renderer(const Renderer &) = delete;
-    Renderer &operator=(const Renderer &) = delete;
-
-    Renderer(Renderer &&) = default;
-    Renderer &operator=(Renderer &&) = default;
-
     void resize_framebuffer(std::uint32_t width, std::uint32_t height);
 
-    void
-    draw_frame(float time, float delta_time, const glm::vec2 &mouse_position);
+    void draw_frame(float time, const glm::vec2 &mouse_position);
 
 private:
     [[nodiscard]] Sync_objects create_sync_objects();
 
-    void update_uniform_buffer(std::uint32_t current_image,
-                               float time,
-                               float delta_time,
-                               const glm::vec2 &mouse_position);
+    void update_uniform_buffer(float time,
+                               const glm::vec2 &mouse_position) const;
 
     void record_draw_command_buffer(std::uint32_t image_index);
 
@@ -73,6 +64,11 @@ private:
     vk::raii::Sampler m_sampler;
     vk::raii::DescriptorPool m_descriptor_pool;
     vk::raii::CommandPool m_command_pool;
+    const std::vector<Vertex> m_vertices {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+                                          {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+                                          {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+                                          {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
+    const std::vector<std::uint16_t> m_indices {0, 1, 2, 2, 3, 0};
 
     // Offscreen pass
     std::uint32_t m_offscreen_width;
@@ -97,7 +93,6 @@ private:
     std::vector<vk::raii::Framebuffer> m_framebuffers;
     Vulkan_buffer m_vertex_buffer;
     Vulkan_buffer m_index_buffer;
-    std::vector<Vulkan_buffer> m_uniform_buffers;
     std::vector<vk::DescriptorSet> m_descriptor_sets;
     vk::raii::CommandBuffers m_draw_command_buffers;
     Sync_objects m_sync_objects;

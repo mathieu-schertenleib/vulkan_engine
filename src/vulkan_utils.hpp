@@ -27,7 +27,7 @@
 #define ENABLE_VALIDATION_LAYERS
 #endif
 
-inline constexpr std::uint32_t max_frames_in_flight {2};
+constexpr std::uint32_t max_frames_in_flight {2};
 
 struct Queue_family_indices
 {
@@ -174,6 +174,9 @@ create_offscreen_render_pass(const vk::raii::Device &device,
                              vk::Format color_attachment_format);
 
 [[nodiscard]] vk::raii::DescriptorSetLayout
+create_offscreen_descriptor_set_layout(const vk::raii::Device &device);
+
+[[nodiscard]] vk::raii::DescriptorSetLayout
 create_descriptor_set_layout(const vk::raii::Device &device);
 
 [[nodiscard]] vk::raii::PipelineLayout create_pipeline_layout(
@@ -184,7 +187,7 @@ create_descriptor_set_layout(const vk::raii::Device &device);
     const vk::raii::Device &device,
     const char *vertex_shader_path,
     const char *fragment_shader_path,
-    const vk::Extent2D &swapchain_extent,
+    const vk::Extent2D &extent,
     vk::PipelineLayout pipeline_layout,
     vk::RenderPass render_pass,
     const vk::VertexInputBindingDescription &vertex_binding_description,
@@ -238,9 +241,7 @@ create_descriptor_sets(const vk::raii::Device &device,
                        vk::DescriptorSetLayout descriptor_set_layout,
                        vk::DescriptorPool descriptor_pool,
                        vk::Sampler sampler,
-                       vk::ImageView texture_image_view,
-                       const std::vector<Vulkan_buffer> &uniform_buffers,
-                       vk::DeviceSize uniform_buffer_size);
+                       vk::ImageView texture_image_view);
 
 [[nodiscard]] vk::DescriptorSet
 create_offscreen_descriptor_set(const vk::raii::Device &device,
@@ -264,18 +265,13 @@ create_index_buffer(const vk::raii::Device &device,
                     const vk::raii::PhysicalDevice &physical_device,
                     const vk::raii::CommandPool &command_pool,
                     const vk::raii::Queue &graphics_queue,
-                    const std::vector<std::uint16_t> &indices);
+                    const std::uint16_t *index_data,
+                    vk::DeviceSize index_buffer_size);
 
 [[nodiscard]] Vulkan_buffer
 create_uniform_buffer(const vk::raii::Device &device,
                       const vk::raii::PhysicalDevice &physical_device,
                       vk::DeviceSize uniform_buffer_size);
-
-// TODO: this really should just be a std::array
-[[nodiscard]] std::vector<Vulkan_buffer>
-create_uniform_buffers(const vk::raii::Device &device,
-                       const vk::raii::PhysicalDevice &physical_device,
-                       vk::DeviceSize uniform_buffer_size);
 
 [[nodiscard]] vk::raii::CommandBuffer
 create_draw_command_buffer(const vk::raii::Device &device,

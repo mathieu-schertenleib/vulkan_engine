@@ -758,7 +758,7 @@ create_offscreen_render_pass(const vk::raii::Device &device,
 }
 
 vk::raii::DescriptorSetLayout
-create_descriptor_set_layout(const vk::raii::Device &device)
+create_offscreen_descriptor_set_layout(const vk::raii::Device &device)
 {
     constexpr vk::DescriptorSetLayoutBinding ubo_layout_binding {
         .binding = 0,
@@ -781,6 +781,21 @@ create_descriptor_set_layout(const vk::raii::Device &device)
     return {device, create_info};
 }
 
+vk::raii::DescriptorSetLayout
+create_descriptor_set_layout(const vk::raii::Device &device)
+{
+    constexpr vk::DescriptorSetLayoutBinding sampler_layout_binding {
+        .binding = 0,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment};
+
+    const vk::DescriptorSetLayoutCreateInfo create_info {
+        .bindingCount = 1, .pBindings = &sampler_layout_binding};
+
+    return {device, create_info};
+}
+
 vk::raii::PipelineLayout create_pipeline_layout(
     const vk::raii::Device &device,
     const vk::raii::DescriptorSetLayout &descriptor_set_layout)
@@ -795,7 +810,7 @@ vk::raii::Pipeline create_pipeline(
     const vk::raii::Device &device,
     const char *vertex_shader_path,
     const char *fragment_shader_path,
-    const vk::Extent2D &swapchain_extent,
+    const vk::Extent2D &extent,
     vk::PipelineLayout pipeline_layout,
     vk::RenderPass render_pass,
     const vk::VertexInputBindingDescription &vertex_binding_description,
@@ -848,15 +863,14 @@ vk::raii::Pipeline create_pipeline(
             .topology = vk::PrimitiveTopology::eTriangleList,
             .primitiveRestartEnable = VK_FALSE};
 
-    const vk::Viewport viewport {
-        .x = 0.0f,
-        .y = 0.0f,
-        .width = static_cast<float>(swapchain_extent.width),
-        .height = static_cast<float>(swapchain_extent.height),
-        .minDepth = 0.0f,
-        .maxDepth = 1.0f};
+    const vk::Viewport viewport {.x = 0.0f,
+                                 .y = 0.0f,
+                                 .width = static_cast<float>(extent.width),
+                                 .height = static_cast<float>(extent.height),
+                                 .minDepth = 0.0f,
+                                 .maxDepth = 1.0f};
 
-    const vk::Rect2D scissor {.offset = {0, 0}, .extent = swapchain_extent};
+    const vk::Rect2D scissor {.offset = {0, 0}, .extent = extent};
 
     const vk::PipelineViewportStateCreateInfo viewport_state_create_info {
         .viewportCount = 1,
@@ -1140,9 +1154,7 @@ create_descriptor_sets(const vk::raii::Device &device,
                        vk::DescriptorSetLayout descriptor_set_layout,
                        vk::DescriptorPool descriptor_pool,
                        vk::Sampler sampler,
-                       vk::ImageView texture_image_view,
-                       const std::vector<Vulkan_buffer> &uniform_buffers,
-                       vk::DeviceSize uniform_buffer_size)
+                       vk::ImageView texture_image_view)
 {
     std::array<vk::DescriptorSetLayout, max_frames_in_flight> layouts;
     std::fill(layouts.begin(), layouts.end(), descriptor_set_layout);
@@ -1157,31 +1169,18 @@ create_descriptor_sets(const vk::raii::Device &device,
 
     for (std::size_t i {}; i < max_frames_in_flight; ++i)
     {
-        const vk::DescriptorBufferInfo buffer_info {
-            .buffer = *uniform_buffers[i].buffer,
-            .offset = 0,
-            .range = uniform_buffer_size};
-
         const vk::DescriptorImageInfo image_info {
             .sampler = sampler,
             .imageView = texture_image_view,
             .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
-        const std::array descriptor_writes {
-            vk::WriteDescriptorSet {.dstSet = descriptor_sets[i],
-                                    .dstBinding = 0,
-                                    .dstArrayElement = 0,
-                                    .descriptorCount = 1,
-                                    .descriptorType =
-                                        vk::DescriptorType::eUniformBuffer,
-                                    .pBufferInfo = &buffer_info},
-            vk::WriteDescriptorSet {
-                .dstSet = descriptor_sets[i],
-                .dstBinding = 1,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-                .pImageInfo = &image_info}};
+        const std::array descriptor_writes {vk::WriteDescriptorSet {
+            .dstSet = descriptor_sets[i],
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+            .pImageInfo = &image_info}};
 
         device.updateDescriptorSets(descriptor_writes, {});
     }
@@ -1283,25 +1282,24 @@ create_index_buffer(const vk::raii::Device &device,
                     const vk::raii::PhysicalDevice &physical_device,
                     const vk::raii::CommandPool &command_pool,
                     const vk::raii::Queue &graphics_queue,
-                    const std::vector<std::uint16_t> &indices)
+                    const std::uint16_t *index_data,
+                    vk::DeviceSize index_buffer_size)
 {
-    const vk::DeviceSize buffer_size {sizeof(std::uint16_t) * indices.size()};
-
     const auto staging_buffer =
         create_buffer(device,
                       physical_device,
-                      buffer_size,
+                      index_buffer_size,
                       vk::BufferUsageFlagBits::eTransferSrc,
                       vk::MemoryPropertyFlagBits::eHostVisible |
                           vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    auto *const data = staging_buffer.memory.mapMemory(0, buffer_size);
-    std::memcpy(data, indices.data(), static_cast<std::size_t>(buffer_size));
+    auto *const data = staging_buffer.memory.mapMemory(0, index_buffer_size);
+    std::memcpy(data, index_data, static_cast<std::size_t>(index_buffer_size));
     staging_buffer.memory.unmapMemory();
 
     auto index_buffer = create_buffer(device,
                                       physical_device,
-                                      buffer_size,
+                                      index_buffer_size,
                                       vk::BufferUsageFlagBits::eTransferDst |
                                           vk::BufferUsageFlagBits::eIndexBuffer,
                                       vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -1312,7 +1310,7 @@ create_index_buffer(const vk::raii::Device &device,
     command_copy_buffer(command_buffer,
                         *staging_buffer.buffer,
                         *index_buffer.buffer,
-                        buffer_size);
+                        index_buffer_size);
 
     end_one_time_submit_command_buffer(command_buffer, graphics_queue);
 
@@ -1330,23 +1328,6 @@ create_uniform_buffer(const vk::raii::Device &device,
                          vk::BufferUsageFlagBits::eUniformBuffer,
                          vk::MemoryPropertyFlagBits::eHostVisible |
                              vk::MemoryPropertyFlagBits::eHostCoherent);
-}
-
-std::vector<Vulkan_buffer>
-create_uniform_buffers(const vk::raii::Device &device,
-                       const vk::raii::PhysicalDevice &physical_device,
-                       vk::DeviceSize uniform_buffer_size)
-{
-    std::vector<Vulkan_buffer> uniform_buffers;
-    uniform_buffers.reserve(max_frames_in_flight);
-
-    for (std::size_t i {}; i < max_frames_in_flight; ++i)
-    {
-        uniform_buffers.push_back(create_uniform_buffer(
-            device, physical_device, uniform_buffer_size));
-    }
-
-    return uniform_buffers;
 }
 
 vk::raii::CommandBuffer

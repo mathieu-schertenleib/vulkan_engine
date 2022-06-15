@@ -18,26 +18,19 @@
 namespace
 {
 
-struct Vertex
-{
-    glm::vec3 pos;
-    glm::vec2 tex_coord;
-};
-
 struct Uniform_buffer_object
 {
     glm::vec2 resolution;
     glm::vec2 mouse_position;
     float time;
-    float delta_time;
 };
 
-inline constexpr vk::VertexInputBindingDescription vertex_binding_description {
+constexpr vk::VertexInputBindingDescription vertex_binding_description {
     .binding = 0,
     .stride = sizeof(Vertex),
     .inputRate = vk::VertexInputRate::eVertex};
 
-inline constexpr std::array vertex_attribute_descriptions {
+constexpr std::array vertex_attribute_descriptions {
     vk::VertexInputAttributeDescription {.location = 0,
                                          .binding = 0,
                                          .format = vk::Format::eR32G32B32Sfloat,
@@ -53,20 +46,12 @@ inline constexpr std::array vertex_attribute_descriptions {
     | \ |
     1---2
  */
-const std::vector<Vertex> vertices {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-                                    {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-                                    {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-                                    {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
+constexpr Vertex quad_vertices[] {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+                                  {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+                                  {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+                                  {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
 
-const std::vector<std::uint16_t> indices {0, 1, 2, 2, 3, 0};
-
-const std::vector<Vertex> offscreen_vertices {
-    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-    {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-    {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
-
-const std::vector<std::uint16_t> offscreen_indices {0, 1, 2, 2, 3, 0};
+constexpr std::uint16_t quad_indices[] {0, 1, 2, 2, 3, 0};
 
 void check_vk_result(VkResult result)
 {
@@ -76,17 +61,14 @@ void check_vk_result(VkResult result)
             vk::to_string(static_cast<vk::Result>(result)));
 }
 
-inline constexpr auto offscreen_vertex_shader =
-    "shaders/spv/offscreen.vert.spv";
-inline constexpr auto offscreen_fragment_shader =
+constexpr auto offscreen_vertex_shader_path = "shaders/spv/offscreen.vert.spv";
+constexpr auto offscreen_fragment_shader_path =
     "shaders/spv/offscreen.frag.spv";
-inline constexpr auto final_vertex_shader = "shaders/spv/final.vert.spv";
-inline constexpr auto final_fragment_shader = "shaders/spv/final.frag.spv";
+constexpr auto final_vertex_shader_path = "shaders/spv/final.vert.spv";
+constexpr auto final_fragment_shader_path = "shaders/spv/final.frag.spv";
+constexpr auto texture_path = "assets/ray_traced_scene.png";
 
 } // namespace
-
-// NOTE: inspired by
-// https://github.com/SaschaWillems/Vulkan/blob/master/examples/offscreen/offscreen.cpp
 
 Renderer::Renderer(GLFWwindow *window,
                    std::uint32_t width,
@@ -128,13 +110,14 @@ Renderer::Renderer(GLFWwindow *window,
           m_swapchain.format)}
     , m_offscreen_render_pass {create_offscreen_render_pass(m_device,
                                                             m_swapchain.format)}
-    , m_offscreen_descriptor_set_layout {create_descriptor_set_layout(m_device)}
+    , m_offscreen_descriptor_set_layout {create_offscreen_descriptor_set_layout(
+          m_device)}
     , m_offscreen_pipeline_layout {create_pipeline_layout(
           m_device, m_offscreen_descriptor_set_layout)}
     , m_offscreen_pipeline {create_pipeline(
           m_device,
-          offscreen_vertex_shader,
-          offscreen_fragment_shader,
+          offscreen_vertex_shader_path,
+          offscreen_fragment_shader_path,
           {m_offscreen_width, m_offscreen_height},
           *m_offscreen_pipeline_layout,
           *m_offscreen_render_pass,
@@ -147,24 +130,25 @@ Renderer::Renderer(GLFWwindow *window,
           *m_offscreen_render_pass,
           m_offscreen_width,
           m_offscreen_height)}
-    , m_offscreen_texture_image {create_texture_image(
-          m_device,
-          m_physical_device,
-          m_command_pool,
-          m_graphics_queue,
-          "assets/ray_traced_scene.png")}
-    , m_offscreen_vertex_buffer {create_vertex_buffer(
-          m_device,
-          m_physical_device,
-          m_command_pool,
-          m_graphics_queue,
-          offscreen_vertices.data(),
-          offscreen_vertices.size() * sizeof(Vertex))}
+    , m_offscreen_texture_image {create_texture_image(m_device,
+                                                      m_physical_device,
+                                                      m_command_pool,
+                                                      m_graphics_queue,
+                                                      texture_path)}
+    , m_offscreen_vertex_buffer {create_vertex_buffer(m_device,
+                                                      m_physical_device,
+                                                      m_command_pool,
+                                                      m_graphics_queue,
+                                                      m_vertices.data(),
+                                                      m_vertices.size() *
+                                                          sizeof(Vertex))}
     , m_offscreen_index_buffer {create_index_buffer(m_device,
                                                     m_physical_device,
                                                     m_command_pool,
                                                     m_graphics_queue,
-                                                    offscreen_indices)}
+                                                    m_indices.data(),
+                                                    m_indices.size() *
+                                                        sizeof(std::uint16_t))}
     , m_offscreen_uniform_buffer {create_uniform_buffer(
           m_device, m_physical_device, sizeof(Uniform_buffer_object))}
     , m_offscreen_descriptor_set {create_offscreen_descriptor_set(
@@ -180,8 +164,8 @@ Renderer::Renderer(GLFWwindow *window,
     , m_pipeline_layout {create_pipeline_layout(m_device,
                                                 m_descriptor_set_layout)}
     , m_pipeline {create_pipeline(m_device,
-                                  final_vertex_shader,
-                                  final_fragment_shader,
+                                  final_vertex_shader_path,
+                                  final_fragment_shader_path,
                                   m_swapchain.extent,
                                   *m_pipeline_layout,
                                   *m_render_pass,
@@ -197,23 +181,22 @@ Renderer::Renderer(GLFWwindow *window,
                                             m_physical_device,
                                             m_command_pool,
                                             m_graphics_queue,
-                                            vertices.data(),
-                                            vertices.size() * sizeof(Vertex))}
+                                            quad_vertices,
+                                            std::size(quad_vertices) *
+                                                sizeof(Vertex))}
     , m_index_buffer {create_index_buffer(m_device,
                                           m_physical_device,
                                           m_command_pool,
                                           m_graphics_queue,
-                                          indices)}
-    , m_uniform_buffers {create_uniform_buffers(
-          m_device, m_physical_device, sizeof(Uniform_buffer_object))}
+                                          quad_indices,
+                                          std::size(quad_indices) *
+                                              sizeof(std::uint16_t))}
     , m_descriptor_sets {create_descriptor_sets(
           m_device,
           *m_descriptor_set_layout,
           *m_descriptor_pool,
           *m_sampler,
-          *m_offscreen_color_attachment.view,
-          m_uniform_buffers,
-          sizeof(Uniform_buffer_object))}
+          *m_offscreen_color_attachment.view)}
     , m_draw_command_buffers {create_draw_command_buffers(m_device,
                                                           m_command_pool)}
     , m_sync_objects {create_sync_objects()}
@@ -273,22 +256,19 @@ Sync_objects Renderer::create_sync_objects()
     return result;
 }
 
-void Renderer::update_uniform_buffer(std::uint32_t current_image,
-                                     float time,
-                                     float delta_time,
-                                     const glm::vec2 &mouse_position)
+void Renderer::update_uniform_buffer(float time,
+                                     const glm::vec2 &mouse_position) const
 {
     const Uniform_buffer_object ubo {
         .resolution = {static_cast<float>(m_framebuffer_width),
                        static_cast<float>(m_framebuffer_height)},
         .mouse_position = mouse_position,
-        .time = time,
-        .delta_time = delta_time};
+        .time = time};
 
     auto *const data =
-        m_uniform_buffers[current_image].memory.mapMemory(0, sizeof(ubo));
+        m_offscreen_uniform_buffer.memory.mapMemory(0, sizeof(ubo));
     std::memcpy(data, &ubo, sizeof(ubo));
-    m_uniform_buffers[current_image].memory.unmapMemory();
+    m_offscreen_uniform_buffer.memory.unmapMemory();
 }
 
 void Renderer::record_draw_command_buffer(std::uint32_t image_index)
@@ -329,7 +309,7 @@ void Renderer::record_draw_command_buffer(std::uint32_t image_index)
             *m_offscreen_index_buffer.buffer, 0, vk::IndexType::eUint16);
 
         command_buffer.drawIndexed(
-            static_cast<std::uint32_t>(offscreen_indices.size()), 1, 0, 0, 0);
+            static_cast<std::uint32_t>(m_indices.size()), 1, 0, 0, 0);
 
         command_buffer.endRenderPass();
     }
@@ -367,7 +347,7 @@ void Renderer::record_draw_command_buffer(std::uint32_t image_index)
             *m_index_buffer.buffer, 0, vk::IndexType::eUint16);
 
         command_buffer.drawIndexed(
-            static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
+            static_cast<std::uint32_t>(std::size(quad_indices)), 1, 0, 0, 0);
 
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *command_buffer);
 
@@ -399,8 +379,8 @@ void Renderer::recreate_swapchain()
     m_pipeline_layout =
         create_pipeline_layout(m_device, m_descriptor_set_layout);
     m_pipeline = create_pipeline(m_device,
-                                 final_vertex_shader,
-                                 final_fragment_shader,
+                                 final_vertex_shader_path,
+                                 final_fragment_shader_path,
                                  m_swapchain.extent,
                                  *m_pipeline_layout,
                                  *m_render_pass,
@@ -421,9 +401,7 @@ void Renderer::resize_framebuffer(std::uint32_t width, std::uint32_t height)
     m_framebuffer_height = height;
 }
 
-void Renderer::draw_frame(float time,
-                          float delta_time,
-                          const glm::vec2 &mouse_position)
+void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
 {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -463,7 +441,7 @@ void Renderer::draw_frame(float time,
         throw std::runtime_error("Failed to acquire swapchain image");
     }
 
-    update_uniform_buffer(m_current_frame, time, delta_time, mouse_position);
+    update_uniform_buffer(time, mouse_position);
 
     m_device.resetFences(*m_sync_objects.in_flight_fences[m_current_frame]);
 
