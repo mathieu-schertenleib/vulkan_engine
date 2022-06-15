@@ -81,7 +81,10 @@ target_include_directories(vulkan_engine PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(vulkan_engine PRIVATE ${Vulkan_LIBRARIES})
 
 
-set(SHADERS shaders/shader.vert shaders/shader.frag)
+set(SHADERS
+        shaders/offscreen.vert shaders/offscreen.frag
+        shaders/final.vert shaders/final.frag
+        )
 foreach (SHADER IN LISTS SHADERS)
     get_filename_component(FILENAME ${SHADER} NAME)
     set(SRC_SHADER ${CMAKE_SOURCE_DIR}/${SHADER})

@@ -35,21 +35,22 @@ struct Queue_family_indices
     std::uint32_t present;
 };
 
-struct Swapchain
+struct Vulkan_swapchain
 {
     vk::raii::SwapchainKHR swapchain;
     vk::Format format;
     vk::Extent2D extent;
+    std::uint32_t min_image_count;
 };
 
-struct Image
+struct Vulkan_image
 {
     vk::raii::Image image;
     vk::raii::ImageView view;
     vk::raii::DeviceMemory memory;
 };
 
-struct Buffer
+struct Vulkan_buffer
 {
     vk::raii::Buffer buffer;
     vk::raii::DeviceMemory memory;
@@ -77,14 +78,13 @@ get_queue_family_indices(const vk::raii::PhysicalDevice &physical_device,
 create_device(const vk::raii::PhysicalDevice &physical_device,
               const Queue_family_indices &queue_family_indices);
 
-[[nodiscard]] Swapchain
+[[nodiscard]] Vulkan_swapchain
 create_swapchain(const vk::raii::Device &device,
                  const vk::raii::PhysicalDevice &physical_device,
                  vk::SurfaceKHR surface,
                  const Queue_family_indices &queue_family_indices,
                  std::uint32_t width,
-                 std::uint32_t height,
-                 bool fastest_present_mode);
+                 std::uint32_t height);
 
 [[nodiscard]] std::vector<vk::Image>
 get_swapchain_images(const vk::raii::SwapchainKHR &swapchain);
@@ -114,20 +114,19 @@ find_memory_type(const vk::raii::PhysicalDevice &physical_device,
                  std::uint32_t type_filter,
                  vk::MemoryPropertyFlags requested_properties);
 
-[[nodiscard]] Buffer
+[[nodiscard]] Vulkan_buffer
 create_buffer(const vk::raii::Device &device,
               const vk::raii::PhysicalDevice &physical_device,
               vk::DeviceSize size,
               vk::BufferUsageFlags usage,
               vk::MemoryPropertyFlags properties);
 
-[[nodiscard]] Image
+[[nodiscard]] Vulkan_image
 create_image(const vk::raii::Device &device,
              const vk::raii::PhysicalDevice &physical_device,
              std::uint32_t width,
              std::uint32_t height,
              vk::Format format,
-             vk::ImageTiling tiling,
              vk::ImageUsageFlags usage,
              vk::MemoryPropertyFlags properties);
 
@@ -167,7 +166,9 @@ void command_transition_image_layout(
     vk::AccessFlags dst_access_mask);
 
 [[nodiscard]] vk::raii::RenderPass
-create_render_pass(const vk::raii::Device &device, vk::Format swapchain_format);
+create_render_pass(const vk::raii::Device &device,
+                   vk::Format color_attachment_format,
+                   vk::ImageLayout final_color_attachment_layout);
 
 [[nodiscard]] vk::raii::DescriptorSetLayout
 create_descriptor_set_layout(const vk::raii::Device &device);
@@ -191,15 +192,23 @@ create_descriptor_set_layout(const vk::raii::Device &device);
 create_shader_module(const vk::raii::Device &device,
                      const std::vector<std::uint8_t> &shader_code);
 
-[[nodiscard]] std::vector<vk::raii::Framebuffer> create_framebuffers(
-    const vk::raii::Device &device,
-    const std::vector<vk::raii::ImageView> &swapchain_image_views,
-    vk::RenderPass render_pass,
-    const vk::Extent2D &swapchain_extent);
+[[nodiscard]] vk::raii::Framebuffer
+create_framebuffer(const vk::raii::Device &device,
+                   const vk::raii::ImageView &image_view,
+                   vk::RenderPass render_pass,
+                   std::uint32_t width,
+                   std::uint32_t height);
+
+[[nodiscard]] std::vector<vk::raii::Framebuffer>
+create_framebuffers(const vk::raii::Device &device,
+                    const std::vector<vk::raii::ImageView> &image_views,
+                    vk::RenderPass render_pass,
+                    std::uint32_t width,
+                    std::uint32_t height);
 
 [[nodiscard]] vk::raii::Sampler create_sampler(const vk::raii::Device &device);
 
-[[nodiscard]] Image
+[[nodiscard]] Vulkan_image
 create_texture_image(const vk::raii::Device &device,
                      const vk::raii::PhysicalDevice &physical_device,
                      const vk::raii::CommandPool &command_pool,
@@ -227,10 +236,19 @@ create_descriptor_sets(const vk::raii::Device &device,
                        vk::DescriptorPool descriptor_pool,
                        vk::Sampler sampler,
                        vk::ImageView texture_image_view,
-                       const std::vector<Buffer> &uniform_buffers,
+                       const std::vector<Vulkan_buffer> &uniform_buffers,
                        vk::DeviceSize uniform_buffer_size);
 
-[[nodiscard]] Buffer
+[[nodiscard]] vk::DescriptorSet
+create_offscreen_descriptor_set(const vk::raii::Device &device,
+                                vk::DescriptorSetLayout descriptor_set_layout,
+                                vk::DescriptorPool descriptor_pool,
+                                vk::Sampler sampler,
+                                vk::ImageView texture_image_view,
+                                const Vulkan_buffer &uniform_buffer,
+                                vk::DeviceSize uniform_buffer_size);
+
+[[nodiscard]] Vulkan_buffer
 create_vertex_buffer(const vk::raii::Device &device,
                      const vk::raii::PhysicalDevice &physical_device,
                      const vk::raii::CommandPool &command_pool,
@@ -238,20 +256,30 @@ create_vertex_buffer(const vk::raii::Device &device,
                      const void *vertex_data,
                      vk::DeviceSize vertex_buffer_size);
 
-[[nodiscard]] Buffer
+[[nodiscard]] Vulkan_buffer
 create_index_buffer(const vk::raii::Device &device,
                     const vk::raii::PhysicalDevice &physical_device,
                     const vk::raii::CommandPool &command_pool,
                     const vk::raii::Queue &graphics_queue,
                     const std::vector<std::uint16_t> &indices);
 
-[[nodiscard]] std::vector<Buffer>
+[[nodiscard]] Vulkan_buffer
+create_uniform_buffer(const vk::raii::Device &device,
+                      const vk::raii::PhysicalDevice &physical_device,
+                      vk::DeviceSize uniform_buffer_size);
+
+// TODO: this really should just be a std::array
+[[nodiscard]] std::vector<Vulkan_buffer>
 create_uniform_buffers(const vk::raii::Device &device,
                        const vk::raii::PhysicalDevice &physical_device,
                        vk::DeviceSize uniform_buffer_size);
 
+[[nodiscard]] vk::raii::CommandBuffer
+create_draw_command_buffer(const vk::raii::Device &device,
+                           const vk::raii::CommandPool &command_pool);
+
 [[nodiscard]] vk::raii::CommandBuffers
-create_frame_command_buffers(const vk::raii::Device &device,
-                             const vk::raii::CommandPool &command_pool);
+create_draw_command_buffers(const vk::raii::Device &device,
+                            const vk::raii::CommandPool &command_pool);
 
 #endif // VULKAN_UTILS_HPP

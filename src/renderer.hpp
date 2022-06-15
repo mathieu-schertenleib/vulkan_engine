@@ -17,7 +17,6 @@
  * TODO:
  *  - Render to an offscreen (lower resolution) image, then sample it from the
  *    final fragment shader
- *  - Integrate ImGui
  */
 
 struct Sync_objects
@@ -55,16 +54,16 @@ private:
                                const glm::vec2 &mouse_position);
 
     void
-    record_frame_command_buffer(const vk::raii::CommandBuffer &command_buffer,
-                                vk::RenderPass render_pass,
-                                vk::Framebuffer framebuffer,
-                                vk::Extent2D swapchain_extent,
-                                vk::Pipeline pipeline,
-                                vk::PipelineLayout pipeline_layout,
-                                vk::DescriptorSet descriptor_set,
-                                vk::Buffer vertex_buffer,
-                                vk::Buffer index_buffer,
-                                std::uint32_t num_indices);
+    record_draw_command_buffer(const vk::raii::CommandBuffer &command_buffer,
+                               vk::RenderPass render_pass,
+                               vk::Framebuffer framebuffer,
+                               vk::Extent2D swapchain_extent,
+                               vk::Pipeline pipeline,
+                               vk::PipelineLayout pipeline_layout,
+                               vk::DescriptorSet descriptor_set,
+                               vk::Buffer vertex_buffer,
+                               vk::Buffer index_buffer,
+                               std::uint32_t num_indices);
 
     void recreate_swapchain();
 
@@ -78,7 +77,7 @@ private:
     vk::raii::Device m_device;
     vk::raii::Queue m_graphics_queue;
     vk::raii::Queue m_present_queue;
-    Swapchain m_swapchain;
+    Vulkan_swapchain m_swapchain;
     std::vector<vk::Image> m_swapchain_images;
     std::vector<vk::raii::ImageView> m_swapchain_image_views;
     vk::raii::RenderPass m_render_pass;
@@ -88,10 +87,10 @@ private:
     std::vector<vk::raii::Framebuffer> m_framebuffers;
     vk::raii::CommandPool m_command_pool;
     vk::raii::Sampler m_sampler;
-    Image m_texture_image;
-    Buffer m_vertex_buffer;
-    Buffer m_index_buffer;
-    std::vector<Buffer> m_uniform_buffers;
+    Vulkan_image m_texture_image;
+    Vulkan_buffer m_vertex_buffer;
+    Vulkan_buffer m_index_buffer;
+    std::vector<Vulkan_buffer> m_uniform_buffers;
     vk::raii::DescriptorPool m_descriptor_pool;
     std::vector<vk::DescriptorSet> m_descriptor_sets;
     vk::raii::CommandBuffers m_command_buffers;
@@ -100,6 +99,20 @@ private:
     bool m_framebuffer_resized {};
     std::uint32_t m_framebuffer_width;
     std::uint32_t m_framebuffer_height;
+
+    std::uint32_t m_offscreen_width;
+    std::uint32_t m_offscreen_height;
+    Vulkan_image m_offscreen_color_attachment;
+    vk::raii::RenderPass m_offscreen_render_pass;
+    vk::raii::DescriptorSetLayout m_offscreen_descriptor_set_layout;
+    vk::raii::PipelineLayout m_offscreen_pipeline_layout;
+    vk::raii::Pipeline m_offscreen_pipeline;
+    vk::raii::Framebuffer m_offscreen_framebuffer;
+    Vulkan_buffer m_offscreen_vertex_buffer;
+    Vulkan_buffer m_offscreen_index_buffer;
+    Vulkan_buffer m_offscreen_uniform_buffer;
+    vk::DescriptorSet m_descriptor_set;
+    vk::raii::CommandBuffer m_offscreen_command_buffer;
 };
 
 #endif // RENDERER_HPP

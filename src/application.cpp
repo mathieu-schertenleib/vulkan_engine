@@ -1,5 +1,7 @@
 #include "application.hpp"
 
+#include "imgui.h"
+
 #include <iostream>
 
 namespace
@@ -21,6 +23,17 @@ Glfw_context::Glfw_context()
 Glfw_context::~Glfw_context()
 {
     glfwTerminate();
+}
+
+ImGui_context::ImGui_context()
+{
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+}
+
+ImGui_context::~ImGui_context()
+{
+    ImGui::DestroyContext();
 }
 
 Application::Application()
@@ -79,29 +92,11 @@ void Application::key_callback(
 {
     if (action == GLFW_PRESS && key == GLFW_KEY_F)
     {
-        // Toggle fullscreen
-
-        auto *const monitor = glfwGetPrimaryMonitor();
-        const auto *const video_mode = glfwGetVideoMode(monitor);
-        if (glfwGetWindowMonitor(window) != nullptr)
-        {
-            constexpr int width {640};
-            constexpr int height {480};
-            const auto pos_x = std::max((video_mode->width - width) / 2, 0);
-            const auto pos_y = std::max((video_mode->height - height) / 2, 0);
-            glfwSetWindowMonitor(
-                window, nullptr, pos_x, pos_y, width, height, GLFW_DONT_CARE);
-        }
+        auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
+        if (app->is_fullscreen())
+            app->set_windowed();
         else
-        {
-            glfwSetWindowMonitor(window,
-                                 monitor,
-                                 0,
-                                 0,
-                                 video_mode->width,
-                                 video_mode->height,
-                                 GLFW_DONT_CARE);
-        }
+            app->set_fullscreen();
     }
 }
 
@@ -112,4 +107,37 @@ void Application::framebuffer_size_callback(GLFWwindow *window,
     auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
     app->m_renderer->resize_framebuffer(static_cast<std::uint32_t>(width),
                                         static_cast<std::uint32_t>(height));
+}
+
+bool Application::is_fullscreen()
+{
+    return glfwGetWindowMonitor(m_window) != nullptr;
+}
+
+void Application::set_fullscreen()
+{
+    auto *const monitor = glfwGetPrimaryMonitor();
+    const auto *const video_mode = glfwGetVideoMode(monitor);
+    glfwSetWindowMonitor(m_window,
+                         monitor,
+                         0,
+                         0,
+                         video_mode->width,
+                         video_mode->height,
+                         GLFW_DONT_CARE);
+}
+
+void Application::set_windowed()
+{
+    auto *const monitor = glfwGetPrimaryMonitor();
+    const auto *const video_mode = glfwGetVideoMode(monitor);
+    constexpr int width {1280};
+    constexpr int height {720};
+    glfwSetWindowMonitor(m_window,
+                         nullptr,
+                         (video_mode->width - width) / 2,
+                         (video_mode->height - height) / 2,
+                         width,
+                         height,
+                         GLFW_DONT_CARE);
 }

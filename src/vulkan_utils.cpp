@@ -220,9 +220,11 @@ select_physical_device(const vk::raii::Instance &instance,
                      });
     if (it != suitable_devices.end())
     {
+        // Return the first suitable discrete GPU, if there is one
         return *it;
     }
 
+    // Else return the first suitable GPU
     return suitable_devices.front();
 }
 
@@ -266,6 +268,8 @@ vk::raii::Device create_device(const vk::raii::PhysicalDevice &physical_device,
 {
     std::vector<vk::DeviceQueueCreateInfo> queue_create_infos;
 
+    // TODO: it is probably overkill to use a std::set for just 1, 2 or 3
+    //       elements...
     std::set<std::uint32_t> unique_queue_family_indices {
         queue_family_indices.graphics, queue_family_indices.present};
 
@@ -292,13 +296,13 @@ vk::raii::Device create_device(const vk::raii::PhysicalDevice &physical_device,
     return {physical_device, device_create_info};
 }
 
-Swapchain create_swapchain(const vk::raii::Device &device,
-                           const vk::raii::PhysicalDevice &physical_device,
-                           vk::SurfaceKHR surface,
-                           const Queue_family_indices &queue_family_indices,
-                           std::uint32_t width,
-                           std::uint32_t height,
-                           bool fastest_present_mode)
+Vulkan_swapchain
+create_swapchain(const vk::raii::Device &device,
+                 const vk::raii::PhysicalDevice &physical_device,
+                 vk::SurfaceKHR surface,
+                 const Queue_family_indices &queue_family_indices,
+                 std::uint32_t width,
+                 std::uint32_t height)
 {
     const auto surface_formats = physical_device.getSurfaceFormatsKHR(surface);
     const auto surface_format_it = std::find_if(
@@ -312,20 +316,6 @@ Swapchain create_swapchain(const vk::raii::Device &device,
     const auto surface_format = (surface_format_it != surface_formats.end())
                                     ? *surface_format_it
                                     : surface_formats.front();
-
-    auto present_mode = vk::PresentModeKHR::eFifo;
-    if (fastest_present_mode)
-    {
-        const auto present_modes =
-            physical_device.getSurfacePresentModesKHR(surface);
-        const auto present_mode_it = std::find(present_modes.begin(),
-                                               present_modes.end(),
-                                               vk::PresentModeKHR::eMailbox);
-        if (present_mode_it != present_modes.end())
-        {
-            present_mode = *present_mode_it;
-        }
-    }
 
     const auto surface_capabilities =
         physical_device.getSurfaceCapabilitiesKHR(surface);
@@ -346,16 +336,20 @@ Swapchain create_swapchain(const vk::raii::Device &device,
                                surface_capabilities.minImageExtent.height,
                                surface_capabilities.maxImageExtent.height);
 
-    auto image_count = surface_capabilities.minImageCount + 1;
-    if (surface_capabilities.maxImageCount > 0 &&
-        image_count > surface_capabilities.maxImageCount)
+    std::uint32_t min_image_count {3}; // Triple buffering
+    if (min_image_count < surface_capabilities.minImageCount)
     {
-        image_count = surface_capabilities.maxImageCount;
+        min_image_count = surface_capabilities.minImageCount;
+    }
+    if (surface_capabilities.maxImageCount > 0 &&
+        min_image_count > surface_capabilities.maxImageCount)
+    {
+        min_image_count = surface_capabilities.maxImageCount;
     }
 
     vk::SwapchainCreateInfoKHR swapchain_create_info {
         .surface = surface,
-        .minImageCount = image_count,
+        .minImageCount = min_image_count,
         .imageFormat = surface_format.format,
         .imageColorSpace = surface_format.colorSpace,
         .imageExtent = extent,
@@ -363,7 +357,7 @@ Swapchain create_swapchain(const vk::raii::Device &device,
         .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
         .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-        .presentMode = present_mode,
+        .presentMode = vk::PresentModeKHR::eFifo,
         .clipped = VK_TRUE};
 
     const std::uint32_t queue_family_indices_array[] {
@@ -381,10 +375,11 @@ Swapchain create_swapchain(const vk::raii::Device &device,
         swapchain_create_info.pQueueFamilyIndices = queue_family_indices_array;
     }
 
-    return Swapchain {.swapchain =
-                          vk::raii::SwapchainKHR(device, swapchain_create_info),
-                      .format = surface_format.format,
-                      .extent = extent};
+    return Vulkan_swapchain {
+        .swapchain = vk::raii::SwapchainKHR(device, swapchain_create_info),
+        .format = surface_format.format,
+        .extent = extent,
+        .min_image_count = min_image_count};
 }
 
 std::vector<vk::Image>
@@ -498,11 +493,11 @@ std::uint32_t find_memory_type(const vk::raii::PhysicalDevice &physical_device,
     throw std::runtime_error("Failed to find a suitable memory type");
 }
 
-Buffer create_buffer(const vk::raii::Device &device,
-                     const vk::raii::PhysicalDevice &physical_device,
-                     vk::DeviceSize size,
-                     vk::BufferUsageFlags usage,
-                     vk::MemoryPropertyFlags properties)
+Vulkan_buffer create_buffer(const vk::raii::Device &device,
+                            const vk::raii::PhysicalDevice &physical_device,
+                            vk::DeviceSize size,
+                            vk::BufferUsageFlags usage,
+                            vk::MemoryPropertyFlags properties)
 {
     const vk::BufferCreateInfo buffer_create_info {
         .size = size,
@@ -525,14 +520,13 @@ Buffer create_buffer(const vk::raii::Device &device,
     return {std::move(buffer), std::move(memory)};
 }
 
-Image create_image(const vk::raii::Device &device,
-                   const vk::raii::PhysicalDevice &physical_device,
-                   std::uint32_t width,
-                   std::uint32_t height,
-                   vk::Format format,
-                   vk::ImageTiling tiling,
-                   vk::ImageUsageFlags usage,
-                   vk::MemoryPropertyFlags properties)
+Vulkan_image create_image(const vk::raii::Device &device,
+                          const vk::raii::PhysicalDevice &physical_device,
+                          std::uint32_t width,
+                          std::uint32_t height,
+                          vk::Format format,
+                          vk::ImageUsageFlags usage,
+                          vk::MemoryPropertyFlags properties)
 {
     const vk::ImageCreateInfo image_create_info {
         .imageType = vk::ImageType::e2D,
@@ -541,7 +535,7 @@ Image create_image(const vk::raii::Device &device,
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = vk::SampleCountFlagBits::e1,
-        .tiling = tiling,
+        .tiling = vk::ImageTiling::eOptimal,
         .usage = usage,
         .sharingMode = vk::SharingMode::eExclusive,
         .initialLayout = vk::ImageLayout::eUndefined};
@@ -673,11 +667,13 @@ void command_transition_image_layout(
         src_stage_mask, dst_stage_mask, {}, {}, {}, memory_barrier);
 }
 
-vk::raii::RenderPass create_render_pass(const vk::raii::Device &device,
-                                        vk::Format swapchain_format)
+vk::raii::RenderPass
+create_render_pass(const vk::raii::Device &device,
+                   vk::Format color_attachment_format,
+                   vk::ImageLayout final_color_attachment_layout)
 {
     const vk::AttachmentDescription color_attachment_description {
-        .format = swapchain_format,
+        .format = color_attachment_format,
         .samples = vk::SampleCountFlagBits::e1,
         .loadOp = vk::AttachmentLoadOp::eClear,
         .storeOp = vk::AttachmentStoreOp::eStore,
@@ -877,25 +873,35 @@ create_shader_module(const vk::raii::Device &device,
     return {device, create_info};
 }
 
-std::vector<vk::raii::Framebuffer> create_framebuffers(
-    const vk::raii::Device &device,
-    const std::vector<vk::raii::ImageView> &swapchain_image_views,
-    vk::RenderPass render_pass,
-    const vk::Extent2D &swapchain_extent)
+vk::raii::Framebuffer create_framebuffer(const vk::raii::Device &device,
+                                         const vk::raii::ImageView &image_view,
+                                         vk::RenderPass render_pass,
+                                         std::uint32_t width,
+                                         std::uint32_t height)
+{
+    const vk::FramebufferCreateInfo create_info {.renderPass = render_pass,
+                                                 .attachmentCount = 1,
+                                                 .pAttachments = &*image_view,
+                                                 .width = width,
+                                                 .height = height,
+                                                 .layers = 1};
+    return {device, create_info};
+}
+
+std::vector<vk::raii::Framebuffer>
+create_framebuffers(const vk::raii::Device &device,
+                    const std::vector<vk::raii::ImageView> &image_views,
+                    vk::RenderPass render_pass,
+                    std::uint32_t width,
+                    std::uint32_t height)
 {
     std::vector<vk::raii::Framebuffer> framebuffers;
-    framebuffers.reserve(swapchain_image_views.size());
+    framebuffers.reserve(image_views.size());
 
-    for (const auto &image_view : swapchain_image_views)
+    for (const auto &image_view : image_views)
     {
-        const vk::FramebufferCreateInfo framebuffer_info {
-            .renderPass = render_pass,
-            .attachmentCount = 1,
-            .pAttachments = &*image_view,
-            .width = swapchain_extent.width,
-            .height = swapchain_extent.height,
-            .layers = 1};
-        framebuffers.emplace_back(device, framebuffer_info);
+        framebuffers.push_back(
+            create_framebuffer(device, image_view, render_pass, width, height));
     }
 
     return framebuffers;
@@ -918,11 +924,12 @@ vk::raii::Sampler create_sampler(const vk::raii::Device &device)
     return {device, create_info};
 }
 
-Image create_texture_image(const vk::raii::Device &device,
-                           const vk::raii::PhysicalDevice &physical_device,
-                           const vk::raii::CommandPool &command_pool,
-                           const vk::raii::Queue &graphics_queue,
-                           const char *texture_path)
+Vulkan_image
+create_texture_image(const vk::raii::Device &device,
+                     const vk::raii::PhysicalDevice &physical_device,
+                     const vk::raii::CommandPool &command_pool,
+                     const vk::raii::Queue &graphics_queue,
+                     const char *texture_path)
 {
     int width {};
     int height {};
@@ -956,7 +963,6 @@ Image create_texture_image(const vk::raii::Device &device,
                               static_cast<std::uint32_t>(width),
                               static_cast<std::uint32_t>(height),
                               vk::Format::eR8G8B8A8Srgb,
-                              vk::ImageTiling::eOptimal,
                               vk::ImageUsageFlagBits::eTransferDst |
                                   vk::ImageUsageFlagBits::eSampled,
                               vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -1005,7 +1011,6 @@ void write_image_to_png(const vk::raii::Device &device,
                         vk::AccessFlags access,
                         const char *path)
 {
-
     const auto image_size {static_cast<vk::DeviceSize>(width * height * 4)};
 
     const auto staging_buffer =
@@ -1060,6 +1065,7 @@ void write_image_to_png(const vk::raii::Device &device,
 
 vk::raii::DescriptorPool create_descriptor_pool(const vk::raii::Device &device)
 {
+    // Copied from imgui/examples/example_glfw_vulkan
     constexpr vk::DescriptorPoolSize pool_sizes[] {
         {vk::DescriptorType::eSampler, 1000},
         {vk::DescriptorType::eCombinedImageSampler, 1000},
@@ -1099,7 +1105,7 @@ create_descriptor_sets(const vk::raii::Device &device,
                        vk::DescriptorPool descriptor_pool,
                        vk::Sampler sampler,
                        vk::ImageView texture_image_view,
-                       const std::vector<Buffer> &uniform_buffers,
+                       const std::vector<Vulkan_buffer> &uniform_buffers,
                        vk::DeviceSize uniform_buffer_size)
 {
     std::array<vk::DescriptorSetLayout, max_frames_in_flight> layouts;
@@ -1147,12 +1153,61 @@ create_descriptor_sets(const vk::raii::Device &device,
     return descriptor_sets;
 }
 
-Buffer create_vertex_buffer(const vk::raii::Device &device,
-                            const vk::raii::PhysicalDevice &physical_device,
-                            const vk::raii::CommandPool &command_pool,
-                            const vk::raii::Queue &graphics_queue,
-                            const void *vertex_data,
-                            vk::DeviceSize vertex_buffer_size)
+vk::DescriptorSet
+create_offscreen_descriptor_set(const vk::raii::Device &device,
+                                vk::DescriptorSetLayout descriptor_set_layout,
+                                vk::DescriptorPool descriptor_pool,
+                                vk::Sampler sampler,
+                                vk::ImageView texture_image_view,
+                                const Vulkan_buffer &uniform_buffer,
+                                vk::DeviceSize uniform_buffer_size)
+{
+    const vk::DescriptorSetAllocateInfo allocate_info {
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &descriptor_set_layout};
+
+    auto descriptor_set =
+        (*device).allocateDescriptorSets(allocate_info).front();
+
+    const vk::DescriptorBufferInfo buffer_info {.buffer =
+                                                    *uniform_buffer.buffer,
+                                                .offset = 0,
+                                                .range = uniform_buffer_size};
+
+    const vk::DescriptorImageInfo image_info {
+        .sampler = sampler,
+        .imageView = texture_image_view,
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+    const std::array descriptor_writes {
+        vk::WriteDescriptorSet {.dstSet = descriptor_set,
+                                .dstBinding = 0,
+                                .dstArrayElement = 0,
+                                .descriptorCount = 1,
+                                .descriptorType =
+                                    vk::DescriptorType::eUniformBuffer,
+                                .pBufferInfo = &buffer_info},
+        vk::WriteDescriptorSet {.dstSet = descriptor_set,
+                                .dstBinding = 1,
+                                .dstArrayElement = 0,
+                                .descriptorCount = 1,
+                                .descriptorType =
+                                    vk::DescriptorType::eCombinedImageSampler,
+                                .pImageInfo = &image_info}};
+
+    device.updateDescriptorSets(descriptor_writes, {});
+
+    return descriptor_set;
+}
+
+Vulkan_buffer
+create_vertex_buffer(const vk::raii::Device &device,
+                     const vk::raii::PhysicalDevice &physical_device,
+                     const vk::raii::CommandPool &command_pool,
+                     const vk::raii::Queue &graphics_queue,
+                     const void *vertex_data,
+                     vk::DeviceSize vertex_buffer_size)
 {
     const auto staging_buffer =
         create_buffer(device,
@@ -1187,11 +1242,12 @@ Buffer create_vertex_buffer(const vk::raii::Device &device,
     return vertex_buffer;
 }
 
-Buffer create_index_buffer(const vk::raii::Device &device,
-                           const vk::raii::PhysicalDevice &physical_device,
-                           const vk::raii::CommandPool &command_pool,
-                           const vk::raii::Queue &graphics_queue,
-                           const std::vector<std::uint16_t> &indices)
+Vulkan_buffer
+create_index_buffer(const vk::raii::Device &device,
+                    const vk::raii::PhysicalDevice &physical_device,
+                    const vk::raii::CommandPool &command_pool,
+                    const vk::raii::Queue &graphics_queue,
+                    const std::vector<std::uint16_t> &indices)
 {
     const vk::DeviceSize buffer_size {sizeof(std::uint16_t) * indices.size()};
 
@@ -1227,31 +1283,52 @@ Buffer create_index_buffer(const vk::raii::Device &device,
     return index_buffer;
 }
 
-std::vector<Buffer>
+Vulkan_buffer
+create_uniform_buffer(const vk::raii::Device &device,
+                      const vk::raii::PhysicalDevice &physical_device,
+                      vk::DeviceSize uniform_buffer_size)
+{
+    return create_buffer(device,
+                         physical_device,
+                         uniform_buffer_size,
+                         vk::BufferUsageFlagBits::eUniformBuffer,
+                         vk::MemoryPropertyFlagBits::eHostVisible |
+                             vk::MemoryPropertyFlagBits::eHostCoherent);
+}
+
+std::vector<Vulkan_buffer>
 create_uniform_buffers(const vk::raii::Device &device,
                        const vk::raii::PhysicalDevice &physical_device,
                        vk::DeviceSize uniform_buffer_size)
 {
-    std::vector<Buffer> uniform_buffers;
+    std::vector<Vulkan_buffer> uniform_buffers;
     uniform_buffers.reserve(max_frames_in_flight);
 
     for (std::size_t i {}; i < max_frames_in_flight; ++i)
     {
-        uniform_buffers.push_back(
-            create_buffer(device,
-                          physical_device,
-                          uniform_buffer_size,
-                          vk::BufferUsageFlagBits::eUniformBuffer,
-                          vk::MemoryPropertyFlagBits::eHostVisible |
-                              vk::MemoryPropertyFlagBits::eHostCoherent));
+        uniform_buffers.push_back(create_uniform_buffer(
+            device, physical_device, uniform_buffer_size));
     }
 
     return uniform_buffers;
 }
 
+vk::raii::CommandBuffer
+create_draw_command_buffer(const vk::raii::Device &device,
+                           const vk::raii::CommandPool &command_pool)
+{
+    const vk::CommandBufferAllocateInfo allocate_info {
+        .commandPool = *command_pool,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = 1};
+
+    vk::raii::CommandBuffers command_buffers(device, allocate_info);
+    return std::move(command_buffers.front());
+}
+
 vk::raii::CommandBuffers
-create_frame_command_buffers(const vk::raii::Device &device,
-                             const vk::raii::CommandPool &command_pool)
+create_draw_command_buffers(const vk::raii::Device &device,
+                            const vk::raii::CommandPool &command_pool)
 {
     const vk::CommandBufferAllocateInfo allocate_info {
         .commandPool = *command_pool,

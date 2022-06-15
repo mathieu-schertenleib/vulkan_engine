@@ -13,6 +13,6 @@ void main()
 {
     const float min_dimension = min(resolution.x, resolution.y);
     const float mouse_distance = distance(mouse_position, gl_FragCoord.xy);
-    const float scale = 1.0 - smoothstep(min_dimension * 0.25, min_dimension * 0.5, mouse_distance);
+    const float scale = 1.0 - 0.5 * smoothstep(min_dimension * 0.25, min_dimension * 0.5, mouse_distance);
     out_color = texture(tex_sampler, frag_tex_coord) * vec4(frag_color, 1.0) * scale;
 }

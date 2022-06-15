@@ -14,6 +14,12 @@ struct Glfw_context
     ~Glfw_context();
 };
 
+struct ImGui_context
+{
+    [[nodiscard]] ImGui_context();
+    ~ImGui_context();
+};
+
 class Application
 {
 public:
@@ -34,8 +40,13 @@ private:
     static void
     framebuffer_size_callback(GLFWwindow *window, int width, int height);
 
-    Glfw_context m_context;
+    [[nodiscard]] bool is_fullscreen();
+    void set_fullscreen();
+    void set_windowed();
+
+    Glfw_context m_glfw_context;
     GLFWwindow *m_window;
+    ImGui_context m_imgui_context;
     std::unique_ptr<Renderer> m_renderer;
 };
 

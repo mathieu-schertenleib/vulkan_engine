@@ -90,18 +90,18 @@ Renderer::Renderer(GLFWwindow *window,
                                     *m_surface,
                                     m_queue_family_indices,
                                     width,
-                                    height,
-                                    true)}
+                                    height)}
     , m_swapchain_images {get_swapchain_images(m_swapchain.swapchain)}
     , m_swapchain_image_views {create_swapchain_image_views(
           m_device, m_swapchain_images, m_swapchain.format)}
-    , m_render_pass {create_render_pass(m_device, m_swapchain.format)}
+    , m_render_pass {create_render_pass(
+          m_device, m_swapchain.format, vk::ImageLayout::ePresentSrcKHR)}
     , m_descriptor_set_layout {create_descriptor_set_layout(m_device)}
     , m_pipeline_layout {create_pipeline_layout(m_device,
                                                 m_descriptor_set_layout)}
     , m_pipeline {create_pipeline(m_device,
-                                  "shaders/spv/shader.vert.spv",
-                                  "shaders/spv/shader.frag.spv",
+                                  "shaders/spv/final.vert.spv",
+                                  "shaders/spv/final.frag.spv",
                                   m_swapchain.extent,
                                   *m_pipeline_layout,
                                   *m_render_pass,
@@ -111,7 +111,8 @@ Renderer::Renderer(GLFWwindow *window,
     , m_framebuffers {create_framebuffers(m_device,
                                           m_swapchain_image_views,
                                           *m_render_pass,
-                                          m_swapchain.extent)}
+                                          m_swapchain.extent.width,
+                                          m_swapchain.extent.height)}
     , m_command_pool {create_command_pool(m_device,
                                           m_queue_family_indices.graphics)}
     , m_sampler {create_sampler(m_device)}
@@ -141,16 +142,68 @@ Renderer::Renderer(GLFWwindow *window,
                                                 *m_texture_image.view,
                                                 m_uniform_buffers,
                                                 sizeof(Uniform_buffer_object))}
-    , m_command_buffers {create_frame_command_buffers(m_device, m_command_pool)}
+    , m_command_buffers {create_draw_command_buffers(m_device, m_command_pool)}
     , m_sync_objects {create_sync_objects()}
     , m_framebuffer_width {width}
     , m_framebuffer_height {height}
+    , m_offscreen_width {160}
+    , m_offscreen_height {90}
+    , m_offscreen_color_attachment {create_image(
+          m_device,
+          m_physical_device,
+          m_offscreen_width,
+          m_offscreen_height,
+          m_swapchain.format,
+          vk::ImageUsageFlagBits::eColorAttachment,
+          vk::MemoryPropertyFlagBits::eDeviceLocal)}
+    , m_offscreen_render_pass {create_render_pass(
+          m_device,
+          m_swapchain.format,
+          vk::ImageLayout::eColorAttachmentOptimal)}
+    , m_offscreen_descriptor_set_layout {create_descriptor_set_layout(m_device)}
+    , m_offscreen_pipeline_layout {create_pipeline_layout(
+          m_device, m_offscreen_descriptor_set_layout)}
+    , m_offscreen_pipeline {create_pipeline(
+          m_device,
+          "shaders/spv/offscreen.vert.spv",
+          "shaders/spv/offscreen.frag.spv",
+          {m_offscreen_width, m_offscreen_height},
+          *m_offscreen_pipeline_layout,
+          *m_offscreen_render_pass,
+          vertex_binding_description,
+          vertex_attribute_descriptions.data(),
+          vertex_attribute_descriptions.size())}
+    , m_offscreen_framebuffer {create_framebuffer(
+          m_device,
+          m_offscreen_color_attachment.view,
+          *m_offscreen_render_pass,
+          m_offscreen_width,
+          m_offscreen_height)}
+    , m_offscreen_vertex_buffer {create_vertex_buffer(m_device,
+                                                      m_physical_device,
+                                                      m_command_pool,
+                                                      m_graphics_queue,
+                                                      vertices.data(),
+                                                      vertices.size() *
+                                                          sizeof(Vertex))}
+    , m_offscreen_index_buffer {create_index_buffer(m_device,
+                                                    m_physical_device,
+                                                    m_command_pool,
+                                                    m_graphics_queue,
+                                                    indices)}
+    , m_offscreen_uniform_buffer {create_uniform_buffer(
+          m_device, m_physical_device, sizeof(Uniform_buffer_object))}
+    , m_descriptor_set {create_offscreen_descriptor_set(
+          m_device,
+          *m_offscreen_descriptor_set_layout,
+          *m_descriptor_pool,
+          *m_sampler,
+          *m_texture_image.view,
+          m_offscreen_uniform_buffer,
+          sizeof(Uniform_buffer_object))}
+    , m_offscreen_command_buffer {
+          create_draw_command_buffer(m_device, m_command_pool)}
 {
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-
-    ImGui::StyleColorsDark();
-
     ImGui_ImplGlfw_InitForVulkan(window, true);
     ImGui_ImplVulkan_InitInfo init_info {};
     init_info.Instance = *m_instance;
@@ -160,17 +213,12 @@ Renderer::Renderer(GLFWwindow *window,
     init_info.Queue = *m_graphics_queue;
     init_info.DescriptorPool = *m_descriptor_pool;
     init_info.Subpass = 0;
-    init_info.MinImageCount = 2;
+    init_info.MinImageCount = m_swapchain.min_image_count;
     init_info.ImageCount =
         static_cast<std::uint32_t>(m_swapchain_images.size());
     init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     init_info.CheckVkResultFn = &check_vk_result;
     ImGui_ImplVulkan_Init(&init_info, *m_render_pass);
-
-    auto &io = ImGui::GetIO();
-    ImFontConfig font_config {};
-    font_config.SizePixels = 30.0f;
-    io.Fonts->AddFontDefault(&font_config);
 
     const auto command_buffer =
         begin_one_time_submit_command_buffer(m_device, m_command_pool);
@@ -186,7 +234,6 @@ Renderer::~Renderer()
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
 }
 
 Sync_objects Renderer::create_sync_objects()
@@ -228,7 +275,7 @@ void Renderer::update_uniform_buffer(std::uint32_t current_image,
     m_uniform_buffers[current_image].memory.unmapMemory();
 }
 
-void Renderer::record_frame_command_buffer(
+void Renderer::record_draw_command_buffer(
     const vk::raii::CommandBuffer &command_buffer,
     vk::RenderPass render_pass,
     vk::Framebuffer framebuffer,
@@ -278,6 +325,11 @@ void Renderer::record_frame_command_buffer(
 
 void Renderer::recreate_swapchain()
 {
+    if (m_framebuffer_width == 0 || m_framebuffer_height == 0)
+    {
+        return;
+    }
+
     m_device.waitIdle();
 
     m_swapchain = create_swapchain(m_device,
@@ -285,12 +337,12 @@ void Renderer::recreate_swapchain()
                                    *m_surface,
                                    m_queue_family_indices,
                                    m_framebuffer_width,
-                                   m_framebuffer_height,
-                                   true);
+                                   m_framebuffer_height);
     m_swapchain_images = get_swapchain_images(m_swapchain.swapchain);
     m_swapchain_image_views = create_swapchain_image_views(
         m_device, m_swapchain_images, m_swapchain.format);
-    m_render_pass = create_render_pass(m_device, m_swapchain.format);
+    m_render_pass = create_render_pass(
+        m_device, m_swapchain.format, vk::ImageLayout::ePresentSrcKHR);
     m_pipeline_layout =
         create_pipeline_layout(m_device, m_descriptor_set_layout);
     m_pipeline = create_pipeline(m_device,
@@ -302,8 +354,11 @@ void Renderer::recreate_swapchain()
                                  vertex_binding_description,
                                  vertex_attribute_descriptions.data(),
                                  vertex_attribute_descriptions.size());
-    m_framebuffers = create_framebuffers(
-        m_device, m_swapchain_image_views, *m_render_pass, m_swapchain.extent);
+    m_framebuffers = create_framebuffers(m_device,
+                                         m_swapchain_image_views,
+                                         *m_render_pass,
+                                         m_swapchain.extent.width,
+                                         m_swapchain.extent.height);
 }
 
 void Renderer::resize_framebuffer(std::uint32_t width, std::uint32_t height)
@@ -321,11 +376,15 @@ void Renderer::draw_frame(float time,
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::Begin("Stats");
-    ImGui::Text("%.3f ms/frame, %.1f fps",
-                1000.0 / static_cast<double>(ImGui::GetIO().Framerate),
-                static_cast<double>(ImGui::GetIO().Framerate));
+    ImGui::Begin("Info");
+    ImGui::Text("%.1f fps, %.3f ms/frame",
+                static_cast<double>(ImGui::GetIO().Framerate),
+                1000.0 / static_cast<double>(ImGui::GetIO().Framerate));
+    ImGui::Text(
+        "Framebuffer size: %d x %d", m_framebuffer_width, m_framebuffer_height);
     ImGui::End();
+
+    ImGui::Render();
 
     const auto wait_result = m_device.waitForFences(
         *m_sync_objects.in_flight_fences[m_current_frame],
@@ -357,18 +416,16 @@ void Renderer::draw_frame(float time,
 
     m_command_buffers[m_current_frame].reset();
 
-    ImGui::Render();
-
-    record_frame_command_buffer(m_command_buffers[m_current_frame],
-                                *m_render_pass,
-                                *m_framebuffers[image_index],
-                                m_swapchain.extent,
-                                *m_pipeline,
-                                *m_pipeline_layout,
-                                m_descriptor_sets[m_current_frame],
-                                *m_vertex_buffer.buffer,
-                                *m_index_buffer.buffer,
-                                static_cast<std::uint32_t>(indices.size()));
+    record_draw_command_buffer(m_command_buffers[m_current_frame],
+                               *m_render_pass,
+                               *m_framebuffers[image_index],
+                               m_swapchain.extent,
+                               *m_pipeline,
+                               *m_pipeline_layout,
+                               m_descriptor_sets[m_current_frame],
+                               *m_vertex_buffer.buffer,
+                               *m_index_buffer.buffer,
+                               static_cast<std::uint32_t>(indices.size()));
 
     const vk::PipelineStageFlags wait_stages[] {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};
