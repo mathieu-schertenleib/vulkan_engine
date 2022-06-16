@@ -259,10 +259,14 @@ Sync_objects Renderer::create_sync_objects()
 void Renderer::update_uniform_buffer(float time,
                                      const glm::vec2 &mouse_position) const
 {
+    const auto offscreen_mouse_pos =
+        mouse_position * glm::vec2 {m_offscreen_width, m_offscreen_height} /
+        glm::vec2 {m_framebuffer_width, m_framebuffer_height};
+
     const Uniform_buffer_object ubo {
-        .resolution = {static_cast<float>(m_framebuffer_width),
-                       static_cast<float>(m_framebuffer_height)},
-        .mouse_position = mouse_position,
+        .resolution = {static_cast<float>(m_offscreen_width),
+                       static_cast<float>(m_offscreen_height)},
+        .mouse_position = offscreen_mouse_pos,
         .time = time};
 
     auto *const data =
