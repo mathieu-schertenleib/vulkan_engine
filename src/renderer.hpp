@@ -139,6 +139,8 @@ private:
     vk::DescriptorSet m_offscreen_descriptor_set;
 
     // Final pass
+    std::uint32_t m_framebuffer_width;
+    std::uint32_t m_framebuffer_height;
     vk::raii::RenderPass m_render_pass;
     vk::raii::DescriptorSetLayout m_descriptor_set_layout;
     vk::raii::PipelineLayout m_pipeline_layout;
@@ -151,8 +153,6 @@ private:
     Sync_objects m_sync_objects;
     std::uint32_t m_current_frame {};
     bool m_framebuffer_resized {};
-    std::uint32_t m_framebuffer_width;
-    std::uint32_t m_framebuffer_height;
 };
 
 #endif // RENDERER_HPP

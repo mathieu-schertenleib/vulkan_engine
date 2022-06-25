@@ -831,8 +831,9 @@ create_shader_module(const vk::raii::Device &device,
     const vk::raii::Device &device,
     const char *vertex_shader_path,
     const char *fragment_shader_path,
-    vk::Offset2D offset,
-    vk::Extent2D extent,
+    vk::Offset2D viewport_offset,
+    vk::Extent2D viewport_extent,
+    vk::Extent2D framebuffer_extent,
     vk::PipelineLayout pipeline_layout,
     vk::RenderPass render_pass,
     const vk::VertexInputBindingDescription &vertex_binding_description,
@@ -885,14 +886,15 @@ create_shader_module(const vk::raii::Device &device,
             .topology = vk::PrimitiveTopology::eTriangleList,
             .primitiveRestartEnable = VK_FALSE};
 
-    const vk::Viewport viewport {.x = static_cast<float>(offset.x),
-                                 .y = static_cast<float>(offset.y),
-                                 .width = static_cast<float>(extent.width),
-                                 .height = static_cast<float>(extent.height),
-                                 .minDepth = 0.0f,
-                                 .maxDepth = 1.0f};
+    const vk::Viewport viewport {
+        .x = static_cast<float>(viewport_offset.x),
+        .y = static_cast<float>(viewport_offset.y),
+        .width = static_cast<float>(viewport_extent.width),
+        .height = static_cast<float>(viewport_extent.height),
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f};
 
-    const vk::Rect2D scissor {.offset = offset, .extent = extent};
+    const vk::Rect2D scissor {.offset = {0, 0}, .extent = framebuffer_extent};
 
     const vk::PipelineViewportStateCreateInfo viewport_state_create_info {
         .viewportCount = 1,
@@ -1604,8 +1606,13 @@ viewport_offset(std::uint32_t offscreen_width,
 {
     const auto extent = viewport_extent(
         offscreen_width, offscreen_height, swapchain_width, swapchain_height);
-    return {static_cast<std::int32_t>((swapchain_width - extent.width) / 2),
-            static_cast<std::int32_t>((swapchain_height - extent.height) / 2)};
+    const auto offset_x = (static_cast<std::int32_t>(swapchain_width) -
+                           static_cast<std::int32_t>(extent.width)) /
+                          2;
+    const auto offset_y = (static_cast<std::int32_t>(swapchain_height) -
+                           static_cast<std::int32_t>(extent.height)) /
+                          2;
+    return {offset_x, offset_y};
 }
 
 } // namespace
@@ -1703,6 +1710,7 @@ Renderer::Renderer(GLFWwindow *window,
                                         *m_offscreen_texture_image.view,
                                         m_offscreen_uniform_buffer,
                                         sizeof(Uniform_buffer_object))},
+    m_framebuffer_width {width}, m_framebuffer_height {height},
     m_render_pass {create_render_pass(m_device, m_swapchain.format)},
     m_descriptor_set_layout {create_descriptor_set_layout(m_device)},
     m_pipeline_layout {
@@ -1718,6 +1726,7 @@ Renderer::Renderer(GLFWwindow *window,
                                                 m_offscreen_height,
                                                 m_swapchain.extent.width,
                                                 m_swapchain.extent.height),
+                                {m_framebuffer_width, m_framebuffer_height},
                                 *m_pipeline_layout,
                                 *m_render_pass,
                                 vertex_binding_description,
@@ -1750,8 +1759,7 @@ Renderer::Renderer(GLFWwindow *window,
                                *m_offscreen_color_attachment.view)},
     m_draw_command_buffers {
         create_draw_command_buffers(m_device, m_command_pool)},
-    m_sync_objects {create_sync_objects()}, m_framebuffer_width {width},
-    m_framebuffer_height {height}
+    m_sync_objects {create_sync_objects()}
 {
     ImGui_ImplGlfw_InitForVulkan(window, true);
     ImGui_ImplVulkan_InitInfo init_info {};
@@ -1959,6 +1967,7 @@ void Renderer::recreate_swapchain()
                                                  m_offscreen_height,
                                                  m_swapchain.extent.width,
                                                  m_swapchain.extent.height),
+                                 {m_framebuffer_width, m_framebuffer_height},
                                  *m_pipeline_layout,
                                  *m_render_pass,
                                  vertex_binding_description,
