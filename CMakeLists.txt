@@ -29,7 +29,6 @@ set(GCC_OPTIONS
         -Wduplicated-branches
         -Wlogical-op
         -Wuseless-cast
-        -Wswitch-enum
         )
 
 if (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
@@ -46,6 +45,7 @@ add_executable(vulkan_engine
         src/application.cpp src/application.hpp
         src/renderer.cpp src/renderer.hpp
         src/utils.cpp src/utils.hpp
+        src/memory.cpp src/memory.hpp
         external/stb/stb_image.h
         external/stb/stb_image_write.h
         external/imgui/backends/imgui_impl_glfw.cpp
