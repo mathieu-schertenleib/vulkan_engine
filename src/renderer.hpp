@@ -1,7 +1,23 @@
 #ifndef RENDERER_HPP
 #define RENDERER_HPP
 
-#include "vulkan_utils.hpp"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#pragma GCC diagnostic ignored "-Wcast-function-type"
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
+#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+#define VULKAN_HPP_NO_STRUCT_SETTERS
+#define VULKAN_HPP_NO_UNION_CONSTRUCTORS
+#define VULKAN_HPP_NO_UNION_SETTERS
+#include <vulkan/vulkan_raii.hpp>
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -12,6 +28,43 @@
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
+
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#ifndef NDEBUG
+#define ENABLE_VALIDATION_LAYERS
+#endif
+
+constexpr std::uint32_t max_frames_in_flight {2};
+
+struct Queue_family_indices
+{
+    std::uint32_t graphics;
+    std::uint32_t present;
+};
+
+struct Vulkan_swapchain
+{
+    vk::raii::SwapchainKHR swapchain;
+    vk::Format format;
+    vk::Extent2D extent;
+    std::uint32_t min_image_count;
+};
+
+struct Vulkan_image
+{
+    vk::raii::Image image;
+    vk::raii::ImageView view;
+    vk::raii::DeviceMemory memory;
+};
+
+struct Vulkan_buffer
+{
+    vk::raii::Buffer buffer;
+    vk::raii::DeviceMemory memory;
+};
 
 struct Vertex
 {

@@ -46,11 +46,11 @@ endif ()
 
 add_executable(vulkan_engine
         src/main.cpp
-        src/application.cpp
-        src/renderer.cpp
-        src/utils.cpp
-        src/vulkan_utils.cpp
-        external/stb_image.h external/stb_image_write.h
+        src/application.cpp src/application.hpp
+        src/renderer.cpp src/renderer.hpp
+        src/utils.cpp src/utils.hpp
+        external/stb_image.h
+        external/stb_image_write.h
         external/imgui/backends/imgui_impl_glfw.cpp
         external/imgui/backends/imgui_impl_vulkan.cpp
         external/imgui/imgui.cpp
