@@ -11,6 +11,7 @@ layout(location = 0) out vec4 out_color;
 
 void main()
 {
-    const float cursor_highlight = 1.0 - step(5, distance(gl_FragCoord.xy, in_mouse_position.xy));
+    const float highlight_radius = 5.0;
+    const float cursor_highlight = 1.0 - step(highlight_radius, distance(gl_FragCoord.xy, floor(in_mouse_position.xy)));
     out_color = texture(texture_sampler, in_tex_coord) + vec4(0.3) * cursor_highlight;
 }

@@ -29,16 +29,13 @@ set(GCC_OPTIONS
         -Wduplicated-branches
         -Wlogical-op
         -Wuseless-cast
+        -Wswitch-enum
         )
-
-set(MSVC_OPTIONS /W3)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
     set(PROJECT_OPTIONS ${CLANG_OPTIONS})
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(PROJECT_OPTIONS ${GCC_OPTIONS})
-elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    set(PROJECT_OPTIONS ${MSVC_OPTIONS})
 else ()
     message(WARNING "No warnings set for compiler '${CMAKE_CXX_COMPILER_ID}'")
 endif ()
@@ -49,8 +46,8 @@ add_executable(vulkan_engine
         src/application.cpp src/application.hpp
         src/renderer.cpp src/renderer.hpp
         src/utils.cpp src/utils.hpp
-        external/stb_image.h
-        external/stb_image_write.h
+        external/stb/stb_image.h
+        external/stb/stb_image_write.h
         external/imgui/backends/imgui_impl_glfw.cpp
         external/imgui/backends/imgui_impl_vulkan.cpp
         external/imgui/imgui.cpp
@@ -58,7 +55,10 @@ add_executable(vulkan_engine
         external/imgui/imgui_tables.cpp
         external/imgui/imgui_widgets.cpp
         )
-target_include_directories(vulkan_engine PRIVATE external external/imgui external/imgui/backends)
+target_include_directories(vulkan_engine PRIVATE
+        external/stb
+        external/imgui
+        external/imgui/backends)
 target_compile_options(vulkan_engine PRIVATE ${PROJECT_OPTIONS})
 target_compile_features(vulkan_engine PRIVATE cxx_std_20)
 

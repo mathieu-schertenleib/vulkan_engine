@@ -618,36 +618,6 @@ void command_copy_image_to_buffer(const vk::raii::CommandBuffer &command_buffer,
         image, vk::ImageLayout::eTransferSrcOptimal, buffer, region);
 }
 
-void command_blit_image(const vk::raii::CommandBuffer &command_buffer,
-                        vk::Image src_image,
-                        std::int32_t src_width,
-                        std::int32_t src_height,
-                        vk::Image dst_image,
-                        std::int32_t dst_width,
-                        std::int32_t dst_height)
-{
-    const vk::ImageBlit region {
-        .srcSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
-                           .mipLevel = 0,
-                           .baseArrayLayer = 0,
-                           .layerCount = 1},
-        .srcOffsets = {{vk::Offset3D {0, 0, 0},
-                        vk::Offset3D {src_width, src_height, 1}}},
-        .dstSubresource = {.aspectMask = vk::ImageAspectFlagBits::eColor,
-                           .mipLevel = 0,
-                           .baseArrayLayer = 0,
-                           .layerCount = 1},
-        .dstOffsets = {
-            {vk::Offset3D {0, 0, 0}, vk::Offset3D {dst_width, dst_height, 1}}}};
-
-    command_buffer.blitImage(src_image,
-                             vk::ImageLayout::eTransferSrcOptimal,
-                             dst_image,
-                             vk::ImageLayout::eTransferDstOptimal,
-                             region,
-                             vk::Filter::eNearest);
-}
-
 void command_transition_image_layout(
     const vk::raii::CommandBuffer &command_buffer,
     vk::Image image,
@@ -2014,6 +1984,7 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
                     scale);
         ImGui::Text(
             "Framebuffer: %d x %d", m_framebuffer_width, m_framebuffer_height);
+
         ImGui::End();
     }
 
@@ -2091,3 +2062,4 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
 
     m_current_frame = (m_current_frame + 1) % max_frames_in_flight;
 }
+
