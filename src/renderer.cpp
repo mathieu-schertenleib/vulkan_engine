@@ -68,140 +68,169 @@ constexpr auto final_vertex_shader_path = "shaders/spv/final.vert.spv";
 constexpr auto final_fragment_shader_path = "shaders/spv/final.frag.spv";
 constexpr auto texture_path = "assets/ray_traced_scene.png";
 
+[[nodiscard]] constexpr std::uint32_t
+get_scaling_factor(std::uint32_t offscreen_width,
+                   std::uint32_t offscreen_height,
+                   std::uint32_t swapchain_width,
+                   std::uint32_t swapchain_height)
+{
+    const auto horizontal_scaling_factor = swapchain_width / offscreen_width;
+    const auto vertical_scaling_factor = swapchain_height / offscreen_height;
+    return std::max(
+        std::min(horizontal_scaling_factor, vertical_scaling_factor), 1u);
+}
+
+[[nodiscard]] constexpr vk::Extent2D get_extent(std::uint32_t offscreen_width,
+                                                std::uint32_t offscreen_height,
+                                                std::uint32_t swapchain_width,
+                                                std::uint32_t swapchain_height)
+{
+    const auto scaling_factor = get_scaling_factor(
+        offscreen_width, offscreen_height, swapchain_width, swapchain_height);
+    return {scaling_factor * offscreen_width,
+            scaling_factor * offscreen_height};
+}
+
 } // namespace
 
 Renderer::Renderer(GLFWwindow *window,
                    std::uint32_t width,
                    std::uint32_t height)
-    : m_instance {create_instance()}
+    : m_instance
+{
+    create_instance()
+}
 #ifdef ENABLE_VALIDATION_LAYERS
-    , m_debug_messenger {create_debug_utils_messenger(m_instance)}
+, m_debug_messenger
+{
+    create_debug_utils_messenger(m_instance)
+}
 #endif
-    , m_surface {create_surface(m_instance, window)}
-    , m_physical_device {select_physical_device(m_instance, *m_surface)}
-    , m_queue_family_indices {get_queue_family_indices(m_physical_device,
-                                                       *m_surface)
-                                  .value()}
-    , m_device {create_device(m_physical_device, m_queue_family_indices)}
-    , m_graphics_queue {m_device.getQueue(m_queue_family_indices.graphics, 0)}
-    , m_present_queue {m_device.getQueue(m_queue_family_indices.present, 0)}
-    , m_swapchain {create_swapchain(m_device,
-                                    m_physical_device,
-                                    *m_surface,
-                                    m_queue_family_indices,
-                                    width,
-                                    height)}
-    , m_swapchain_images {get_swapchain_images(m_swapchain.swapchain)}
-    , m_swapchain_image_views {create_swapchain_image_views(
-          m_device, m_swapchain_images, m_swapchain.format)}
-    , m_sampler {create_sampler(m_device)}
-    , m_descriptor_pool {create_descriptor_pool(m_device)}
-    , m_command_pool {create_command_pool(m_device,
-                                          m_queue_family_indices.graphics)}
-    , m_offscreen_width {160}
-    , m_offscreen_height {90}
-    , m_offscreen_color_attachment {create_offscreen_color_attachment(
-          m_device,
-          m_physical_device,
-          m_command_pool,
-          m_graphics_queue,
-          m_offscreen_width,
-          m_offscreen_height,
-          m_swapchain.format)}
-    , m_offscreen_render_pass {create_offscreen_render_pass(m_device,
-                                                            m_swapchain.format)}
-    , m_offscreen_descriptor_set_layout {create_offscreen_descriptor_set_layout(
-          m_device)}
-    , m_offscreen_pipeline_layout {create_pipeline_layout(
-          m_device, m_offscreen_descriptor_set_layout)}
-    , m_offscreen_pipeline {create_pipeline(
-          m_device,
-          offscreen_vertex_shader_path,
-          offscreen_fragment_shader_path,
-          {m_offscreen_width, m_offscreen_height},
-          *m_offscreen_pipeline_layout,
-          *m_offscreen_render_pass,
-          vertex_binding_description,
-          vertex_attribute_descriptions.data(),
-          vertex_attribute_descriptions.size())}
-    , m_offscreen_framebuffer {create_framebuffer(
-          m_device,
-          m_offscreen_color_attachment.view,
-          *m_offscreen_render_pass,
-          m_offscreen_width,
-          m_offscreen_height)}
-    , m_offscreen_texture_image {create_texture_image(m_device,
-                                                      m_physical_device,
-                                                      m_command_pool,
-                                                      m_graphics_queue,
-                                                      texture_path)}
-    , m_offscreen_vertex_buffer {create_vertex_buffer(m_device,
-                                                      m_physical_device,
-                                                      m_command_pool,
-                                                      m_graphics_queue,
-                                                      m_vertices.data(),
-                                                      m_vertices.size() *
-                                                          sizeof(Vertex))}
-    , m_offscreen_index_buffer {create_index_buffer(m_device,
-                                                    m_physical_device,
-                                                    m_command_pool,
-                                                    m_graphics_queue,
-                                                    m_indices.data(),
-                                                    m_indices.size() *
-                                                        sizeof(std::uint16_t))}
-    , m_offscreen_uniform_buffer {create_uniform_buffer(
-          m_device, m_physical_device, sizeof(Uniform_buffer_object))}
-    , m_offscreen_descriptor_set {create_offscreen_descriptor_set(
-          m_device,
-          *m_offscreen_descriptor_set_layout,
-          *m_descriptor_pool,
-          *m_sampler,
-          *m_offscreen_texture_image.view,
-          m_offscreen_uniform_buffer,
-          sizeof(Uniform_buffer_object))}
-    , m_render_pass {create_render_pass(m_device, m_swapchain.format)}
-    , m_descriptor_set_layout {create_descriptor_set_layout(m_device)}
-    , m_pipeline_layout {create_pipeline_layout(m_device,
-                                                m_descriptor_set_layout)}
-    , m_pipeline {create_pipeline(m_device,
-                                  final_vertex_shader_path,
-                                  final_fragment_shader_path,
-                                  m_swapchain.extent,
-                                  *m_pipeline_layout,
-                                  *m_render_pass,
-                                  vertex_binding_description,
-                                  vertex_attribute_descriptions.data(),
-                                  vertex_attribute_descriptions.size())}
-    , m_framebuffers {create_framebuffers(m_device,
-                                          m_swapchain_image_views,
-                                          *m_render_pass,
-                                          m_swapchain.extent.width,
-                                          m_swapchain.extent.height)}
-    , m_vertex_buffer {create_vertex_buffer(m_device,
-                                            m_physical_device,
-                                            m_command_pool,
-                                            m_graphics_queue,
-                                            quad_vertices,
-                                            std::size(quad_vertices) *
-                                                sizeof(Vertex))}
-    , m_index_buffer {create_index_buffer(m_device,
+, m_surface {create_surface(m_instance, window)},
+    m_physical_device {select_physical_device(m_instance, *m_surface)},
+    m_queue_family_indices {
+        get_queue_family_indices(m_physical_device, *m_surface).value()},
+    m_device {create_device(m_physical_device, m_queue_family_indices)},
+    m_graphics_queue {m_device.getQueue(m_queue_family_indices.graphics, 0)},
+    m_present_queue {m_device.getQueue(m_queue_family_indices.present, 0)},
+    m_swapchain {create_swapchain(m_device,
+                                  m_physical_device,
+                                  *m_surface,
+                                  m_queue_family_indices,
+                                  width,
+                                  height)},
+    m_swapchain_images {get_swapchain_images(m_swapchain.swapchain)},
+    m_swapchain_image_views {create_swapchain_image_views(
+        m_device, m_swapchain_images, m_swapchain.format)},
+    m_sampler {create_sampler(m_device)},
+    m_descriptor_pool {create_descriptor_pool(m_device)},
+    m_command_pool {
+        create_command_pool(m_device, m_queue_family_indices.graphics)},
+    m_offscreen_width {160}, m_offscreen_height {90},
+    m_offscreen_color_attachment {
+        create_offscreen_color_attachment(m_device,
                                           m_physical_device,
                                           m_command_pool,
                                           m_graphics_queue,
-                                          quad_indices,
-                                          std::size(quad_indices) *
-                                              sizeof(std::uint16_t))}
-    , m_descriptor_sets {create_descriptor_sets(
-          m_device,
-          *m_descriptor_set_layout,
-          *m_descriptor_pool,
-          *m_sampler,
-          *m_offscreen_color_attachment.view)}
-    , m_draw_command_buffers {create_draw_command_buffers(m_device,
-                                                          m_command_pool)}
-    , m_sync_objects {create_sync_objects()}
-    , m_framebuffer_width {width}
-    , m_framebuffer_height {height}
+                                          m_offscreen_width,
+                                          m_offscreen_height,
+                                          m_swapchain.format)},
+    m_offscreen_render_pass {
+        create_offscreen_render_pass(m_device, m_swapchain.format)},
+    m_offscreen_descriptor_set_layout {
+        create_offscreen_descriptor_set_layout(m_device)},
+    m_offscreen_pipeline_layout {
+        create_pipeline_layout(m_device, m_offscreen_descriptor_set_layout)},
+    m_offscreen_pipeline {
+        create_offscreen_pipeline(m_device,
+                                  offscreen_vertex_shader_path,
+                                  offscreen_fragment_shader_path,
+                                  {m_offscreen_width, m_offscreen_height},
+                                  *m_offscreen_pipeline_layout,
+                                  *m_offscreen_render_pass,
+                                  vertex_binding_description,
+                                  vertex_attribute_descriptions.data(),
+                                  vertex_attribute_descriptions.size())},
+    m_offscreen_framebuffer {
+        create_framebuffer(m_device,
+                           m_offscreen_color_attachment.view,
+                           *m_offscreen_render_pass,
+                           m_offscreen_width,
+                           m_offscreen_height)},
+    m_offscreen_texture_image {create_texture_image(m_device,
+                                                    m_physical_device,
+                                                    m_command_pool,
+                                                    m_graphics_queue,
+                                                    texture_path)},
+    m_offscreen_vertex_buffer {
+        create_vertex_buffer(m_device,
+                             m_physical_device,
+                             m_command_pool,
+                             m_graphics_queue,
+                             m_vertices.data(),
+                             m_vertices.size() * sizeof(Vertex))},
+    m_offscreen_index_buffer {
+        create_index_buffer(m_device,
+                            m_physical_device,
+                            m_command_pool,
+                            m_graphics_queue,
+                            m_indices.data(),
+                            m_indices.size() * sizeof(std::uint16_t))},
+    m_offscreen_uniform_buffer {create_uniform_buffer(
+        m_device, m_physical_device, sizeof(Uniform_buffer_object))},
+    m_offscreen_descriptor_set {
+        create_offscreen_descriptor_set(m_device,
+                                        *m_offscreen_descriptor_set_layout,
+                                        *m_descriptor_pool,
+                                        *m_sampler,
+                                        *m_offscreen_texture_image.view,
+                                        m_offscreen_uniform_buffer,
+                                        sizeof(Uniform_buffer_object))},
+    m_render_pass {create_render_pass(m_device, m_swapchain.format)},
+    m_descriptor_set_layout {create_descriptor_set_layout(m_device)},
+    m_pipeline_layout {
+        create_pipeline_layout(m_device, m_descriptor_set_layout)},
+    m_pipeline {create_pipeline(m_device,
+                                final_vertex_shader_path,
+                                final_fragment_shader_path,
+                                get_extent(m_offscreen_width,
+                                           m_offscreen_height,
+                                           m_swapchain.extent.width,
+                                           m_swapchain.extent.height),
+                                *m_pipeline_layout,
+                                *m_render_pass,
+                                vertex_binding_description,
+                                vertex_attribute_descriptions.data(),
+                                vertex_attribute_descriptions.size())},
+    m_framebuffers {create_framebuffers(m_device,
+                                        m_swapchain_image_views,
+                                        *m_render_pass,
+                                        m_swapchain.extent.width,
+                                        m_swapchain.extent.height)},
+    m_vertex_buffer {
+        create_vertex_buffer(m_device,
+                             m_physical_device,
+                             m_command_pool,
+                             m_graphics_queue,
+                             quad_vertices,
+                             std::size(quad_vertices) * sizeof(Vertex))},
+    m_index_buffer {
+        create_index_buffer(m_device,
+                            m_physical_device,
+                            m_command_pool,
+                            m_graphics_queue,
+                            quad_indices,
+                            std::size(quad_indices) * sizeof(std::uint16_t))},
+    m_descriptor_sets {
+        create_descriptor_sets(m_device,
+                               *m_descriptor_set_layout,
+                               *m_descriptor_pool,
+                               *m_sampler,
+                               *m_offscreen_color_attachment.view)},
+    m_draw_command_buffers {
+        create_draw_command_buffers(m_device, m_command_pool)},
+    m_sync_objects {create_sync_objects()}, m_framebuffer_width {width},
+    m_framebuffer_height {height}
 {
     ImGui_ImplGlfw_InitForVulkan(window, true);
     ImGui_ImplVulkan_InitInfo init_info {};
@@ -218,6 +247,10 @@ Renderer::Renderer(GLFWwindow *window,
     init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     init_info.CheckVkResultFn = &check_vk_result;
     ImGui_ImplVulkan_Init(&init_info, *m_render_pass);
+
+    ImFontConfig font_config {};
+    font_config.SizePixels = 32.0f;
+    ImGui::GetIO().Fonts->AddFontDefault(&font_config);
 
     const auto command_buffer =
         begin_one_time_submit_command_buffer(m_device, m_command_pool);
@@ -365,6 +398,7 @@ void Renderer::recreate_swapchain()
 {
     if (m_framebuffer_width == 0 || m_framebuffer_height == 0)
     {
+        // TODO: check that this is actually what we should do
         return;
     }
 
@@ -385,7 +419,10 @@ void Renderer::recreate_swapchain()
     m_pipeline = create_pipeline(m_device,
                                  final_vertex_shader_path,
                                  final_fragment_shader_path,
-                                 m_swapchain.extent,
+                                 get_extent(m_offscreen_width,
+                                            m_offscreen_height,
+                                            m_swapchain.extent.width,
+                                            m_swapchain.extent.height),
                                  *m_pipeline_layout,
                                  *m_render_pass,
                                  vertex_binding_description,
@@ -411,13 +448,27 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::Begin("Info");
-    ImGui::Text("%.1f fps, %.3f ms/frame",
-                static_cast<double>(ImGui::GetIO().Framerate),
-                1000.0 / static_cast<double>(ImGui::GetIO().Framerate));
-    ImGui::Text(
-        "Framebuffer size: %d x %d", m_framebuffer_width, m_framebuffer_height);
-    ImGui::End();
+    if (ImGui::Begin("Info"))
+    {
+        ImGui::Text("%.1f fps, %.3f ms/frame",
+                    static_cast<double>(ImGui::GetIO().Framerate),
+                    1000.0 / static_cast<double>(ImGui::GetIO().Framerate));
+        ImGui::Text(
+            "Offscreen: %d x %d", m_offscreen_width, m_offscreen_height);
+        const auto scaling_factor =
+            get_scaling_factor(m_offscreen_width,
+                               m_offscreen_height,
+                               m_swapchain.extent.width,
+                               m_swapchain.extent.height);
+        ImGui::Text("Upscaled: %d x %d (%dx scaling)",
+                    scaling_factor * m_offscreen_width,
+                    scaling_factor * m_offscreen_height,
+                    scaling_factor);
+        ImGui::Text("Framebuffer: %d x %d",
+                    m_framebuffer_width,
+                    m_framebuffer_height);
+        ImGui::End();
+    }
 
     ImGui::Render();
 

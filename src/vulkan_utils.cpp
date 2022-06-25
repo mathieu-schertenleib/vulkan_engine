@@ -268,19 +268,21 @@ vk::raii::Device create_device(const vk::raii::PhysicalDevice &physical_device,
 {
     std::vector<vk::DeviceQueueCreateInfo> queue_create_infos;
 
-    // TODO: it is probably overkill to use a std::set for just 1, 2 or 3
-    //       elements...
-    std::set<std::uint32_t> unique_queue_family_indices {
-        queue_family_indices.graphics, queue_family_indices.present};
+    constexpr float queue_priorities[] {1.0f};
 
-    for (const auto queue_family_index : unique_queue_family_indices)
+    const vk::DeviceQueueCreateInfo graphics_queue_create_info {
+        .queueFamilyIndex = queue_family_indices.graphics,
+        .queueCount = 1,
+        .pQueuePriorities = queue_priorities};
+    queue_create_infos.push_back(graphics_queue_create_info);
+
+    if (queue_family_indices.graphics != queue_family_indices.present)
     {
-        constexpr float queue_priorities[] {1.0f};
-        const vk::DeviceQueueCreateInfo queue_create_info {
-            .queueFamilyIndex = queue_family_index,
+        const vk::DeviceQueueCreateInfo present_queue_create_info {
+            .queueFamilyIndex = queue_family_indices.present,
             .queueCount = 1,
             .pQueuePriorities = queue_priorities};
-        queue_create_infos.push_back(queue_create_info);
+        queue_create_infos.push_back(present_queue_create_info);
     }
 
     constexpr auto swapchain_extension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
@@ -924,6 +926,124 @@ vk::raii::Pipeline create_pipeline(
     return {device, VK_NULL_HANDLE, pipeline_create_info};
 }
 
+vk::raii::Pipeline create_offscreen_pipeline(
+    const vk::raii::Device &device,
+    const char *vertex_shader_path,
+    const char *fragment_shader_path,
+    const vk::Extent2D &extent,
+    vk::PipelineLayout pipeline_layout,
+    vk::RenderPass render_pass,
+    const vk::VertexInputBindingDescription &vertex_binding_description,
+    const vk::VertexInputAttributeDescription *vertex_attribute_descriptions,
+    std::uint32_t num_vertex_attribute_descriptions)
+{
+    const auto vertex_shader_code = load_binary_file(vertex_shader_path);
+    if (vertex_shader_code.empty())
+    {
+        throw std::runtime_error(std::string("Failed to load shader \"") +
+                                 std::string(vertex_shader_path) +
+                                 std::string("\""));
+    }
+    const auto fragment_shader_code = load_binary_file(fragment_shader_path);
+    if (fragment_shader_code.empty())
+    {
+        throw std::runtime_error(std::string("Failed to load shader \"") +
+                                 std::string(fragment_shader_path) +
+                                 std::string("\""));
+    }
+
+    const auto vertex_shader_module =
+        create_shader_module(device, vertex_shader_code);
+    const auto fragment_shader_module =
+        create_shader_module(device, fragment_shader_code);
+
+    const vk::PipelineShaderStageCreateInfo vertex_shader_stage_create_info {
+        .stage = vk::ShaderStageFlagBits::eVertex,
+        .module = *vertex_shader_module,
+        .pName = "main"};
+
+    const vk::PipelineShaderStageCreateInfo fragment_shader_stage_create_info {
+        .stage = vk::ShaderStageFlagBits::eFragment,
+        .module = *fragment_shader_module,
+        .pName = "main"};
+
+    const vk::PipelineShaderStageCreateInfo shader_stage_create_infos[] {
+        vertex_shader_stage_create_info, fragment_shader_stage_create_info};
+
+    const vk::PipelineVertexInputStateCreateInfo
+        vertex_input_state_create_info {
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &vertex_binding_description,
+            .vertexAttributeDescriptionCount =
+                num_vertex_attribute_descriptions,
+            .pVertexAttributeDescriptions = vertex_attribute_descriptions};
+
+    const vk::PipelineInputAssemblyStateCreateInfo
+        input_assembly_state_create_info {
+            .topology = vk::PrimitiveTopology::eTriangleList,
+            .primitiveRestartEnable = VK_FALSE};
+
+    const vk::Viewport viewport {.x = 0.0f,
+                                 .y = 0.0f,
+                                 .width = static_cast<float>(extent.width),
+                                 .height = static_cast<float>(extent.height),
+                                 .minDepth = 0.0f,
+                                 .maxDepth = 1.0f};
+
+    const vk::Rect2D scissor {.offset = {0, 0}, .extent = extent};
+
+    const vk::PipelineViewportStateCreateInfo viewport_state_create_info {
+        .viewportCount = 1,
+        .pViewports = &viewport,
+        .scissorCount = 1,
+        .pScissors = &scissor};
+
+    constexpr vk::PipelineRasterizationStateCreateInfo
+        rasterization_state_create_info {
+            .depthClampEnable = VK_FALSE,
+            .rasterizerDiscardEnable = VK_FALSE,
+            .polygonMode = vk::PolygonMode::eFill,
+            .cullMode = vk::CullModeFlagBits::eBack,
+            .frontFace = vk::FrontFace::eCounterClockwise,
+            .depthBiasEnable = VK_FALSE,
+            .lineWidth = 1.0f};
+
+    constexpr vk::PipelineMultisampleStateCreateInfo
+        multisample_state_create_info {.rasterizationSamples =
+                                           vk::SampleCountFlagBits::e1,
+                                       .sampleShadingEnable = VK_FALSE};
+
+    constexpr vk::PipelineColorBlendAttachmentState
+        color_blend_attachment_state {.blendEnable = VK_FALSE,
+                                      .colorWriteMask =
+                                          vk::ColorComponentFlagBits::eR |
+                                          vk::ColorComponentFlagBits::eG |
+                                          vk::ColorComponentFlagBits::eB |
+                                          vk::ColorComponentFlagBits::eA};
+
+    const vk::PipelineColorBlendStateCreateInfo color_blend_state_create_info {
+        .logicOpEnable = VK_FALSE,
+        .logicOp = vk::LogicOp::eCopy,
+        .attachmentCount = 1,
+        .pAttachments = &color_blend_attachment_state,
+        .blendConstants = {{0.0f, 0.0f, 0.0f, 0.0f}}};
+
+    const vk::GraphicsPipelineCreateInfo pipeline_create_info {
+        .stageCount = 2,
+        .pStages = shader_stage_create_infos,
+        .pVertexInputState = &vertex_input_state_create_info,
+        .pInputAssemblyState = &input_assembly_state_create_info,
+        .pViewportState = &viewport_state_create_info,
+        .pRasterizationState = &rasterization_state_create_info,
+        .pMultisampleState = &multisample_state_create_info,
+        .pColorBlendState = &color_blend_state_create_info,
+        .layout = pipeline_layout,
+        .renderPass = render_pass,
+        .subpass = 0};
+
+    return {device, VK_NULL_HANDLE, pipeline_create_info};
+}
+
 vk::raii::ShaderModule
 create_shader_module(const vk::raii::Device &device,
                      const std::vector<std::uint8_t> &shader_code)
@@ -1294,7 +1414,7 @@ create_index_buffer(const vk::raii::Device &device,
                           vk::MemoryPropertyFlagBits::eHostCoherent);
 
     auto *const data = staging_buffer.memory.mapMemory(0, index_buffer_size);
-    std::memcpy(data, index_data, static_cast<std::size_t>(index_buffer_size));
+    std::memcpy(data, index_data, index_buffer_size);
     staging_buffer.memory.unmapMemory();
 
     auto index_buffer = create_buffer(device,

@@ -79,6 +79,7 @@ target_link_libraries(vulkan_engine PRIVATE glm)
 find_package(Vulkan REQUIRED)
 target_include_directories(vulkan_engine PRIVATE ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(vulkan_engine PRIVATE ${Vulkan_LIBRARIES})
+message(STATUS "Vulkan SDK: " $ENV{VULKAN_SDK})
 
 
 set(SHADERS

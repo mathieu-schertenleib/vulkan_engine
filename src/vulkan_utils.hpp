@@ -194,6 +194,17 @@ create_descriptor_set_layout(const vk::raii::Device &device);
     const vk::VertexInputAttributeDescription *vertex_attribute_descriptions,
     std::uint32_t num_vertex_attribute_descriptions);
 
+[[nodiscard]] vk::raii::Pipeline create_offscreen_pipeline(
+    const vk::raii::Device &device,
+    const char *vertex_shader_path,
+    const char *fragment_shader_path,
+    const vk::Extent2D &extent,
+    vk::PipelineLayout pipeline_layout,
+    vk::RenderPass render_pass,
+    const vk::VertexInputBindingDescription &vertex_binding_description,
+    const vk::VertexInputAttributeDescription *vertex_attribute_descriptions,
+    std::uint32_t num_vertex_attribute_descriptions);
+
 [[nodiscard]] vk::raii::ShaderModule
 create_shader_module(const vk::raii::Device &device,
                      const std::vector<std::uint8_t> &shader_code);
