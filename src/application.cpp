@@ -3,35 +3,38 @@
 #include "imgui.h"
 
 #include <iostream>
+#include <stdexcept>
 
 namespace
 {
 
-void glfw_error_callback(int error [[maybe_unused]], const char *description)
+[[noreturn]] void glfw_fatal(int error, const char *description)
 {
-    std::cerr << "GLFW error " << error << ": " << description << std::endl;
+    std::ostringstream oss;
+    oss << "GLFW error " << error << ": " << description << '\n';
+    throw std::runtime_error(oss.str());
 }
 
 } // namespace
 
-Glfw_context::Glfw_context()
+Application::Glfw_context::Glfw_context()
 {
-    glfwSetErrorCallback(glfw_error_callback);
+    glfwSetErrorCallback(&glfw_fatal);
     glfwInit();
 }
 
-Glfw_context::~Glfw_context()
+Application::Glfw_context::~Glfw_context()
 {
     glfwTerminate();
 }
 
-ImGui_context::ImGui_context()
+Application::ImGui_context::ImGui_context()
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 }
 
-ImGui_context::~ImGui_context()
+Application::ImGui_context::~ImGui_context()
 {
     ImGui::DestroyContext();
 }
@@ -40,25 +43,22 @@ Application::Application()
 {
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    m_window = glfwCreateWindow(1280, 720, "Vulkan engine", nullptr, nullptr);
+    m_window = std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)>(
+        glfwCreateWindow(1280, 720, "Vulkan engine", nullptr, nullptr),
+        &glfwDestroyWindow);
 
-    glfwSetWindowUserPointer(m_window, this);
+    glfwSetWindowUserPointer(m_window.get(), this);
 
-    glfwSetKeyCallback(m_window, key_callback);
-    glfwSetFramebufferSizeCallback(m_window, framebuffer_size_callback);
+    glfwSetKeyCallback(m_window.get(), key_callback);
+    glfwSetFramebufferSizeCallback(m_window.get(), framebuffer_size_callback);
 
     int width {};
     int height {};
-    glfwGetFramebufferSize(m_window, &width, &height);
+    glfwGetFramebufferSize(m_window.get(), &width, &height);
 
-    m_renderer = std::make_unique<Renderer>(m_window,
+    m_renderer = std::make_unique<Renderer>(m_window.get(),
                                             static_cast<std::uint32_t>(width),
                                             static_cast<std::uint32_t>(height));
-}
-
-Application::~Application()
-{
-    glfwDestroyWindow(m_window);
 }
 
 void Application::run()
@@ -66,7 +66,7 @@ void Application::run()
     int frames {};
     const auto start_time = glfwGetTime();
 
-    while (!glfwWindowShouldClose(m_window))
+    while (!glfwWindowShouldClose(m_window.get()))
     {
         glfwPollEvents();
 
@@ -74,7 +74,7 @@ void Application::run()
         const auto total_time = now - start_time;
 
         double x, y;
-        glfwGetCursorPos(m_window, &x, &y);
+        glfwGetCursorPos(m_window.get(), &x, &y);
 
         m_renderer->draw_frame(static_cast<float>(total_time),
                                {static_cast<float>(x), static_cast<float>(y)});
@@ -107,14 +107,14 @@ void Application::framebuffer_size_callback(GLFWwindow *window,
 
 bool Application::is_fullscreen()
 {
-    return glfwGetWindowMonitor(m_window) != nullptr;
+    return glfwGetWindowMonitor(m_window.get()) != nullptr;
 }
 
 void Application::set_fullscreen()
 {
     auto *const monitor = glfwGetPrimaryMonitor();
     const auto *const video_mode = glfwGetVideoMode(monitor);
-    glfwSetWindowMonitor(m_window,
+    glfwSetWindowMonitor(m_window.get(),
                          monitor,
                          0,
                          0,
@@ -129,7 +129,7 @@ void Application::set_windowed()
     const auto *const video_mode = glfwGetVideoMode(monitor);
     constexpr int width {1280};
     constexpr int height {720};
-    glfwSetWindowMonitor(m_window,
+    glfwSetWindowMonitor(m_window.get(),
                          nullptr,
                          (video_mode->width - width) / 2,
                          (video_mode->height - height) / 2,

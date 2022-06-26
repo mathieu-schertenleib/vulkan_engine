@@ -8,23 +8,10 @@
 #include <memory>
 #include <vector>
 
-struct Glfw_context
-{
-    [[nodiscard]] Glfw_context();
-    ~Glfw_context();
-};
-
-struct ImGui_context
-{
-    [[nodiscard]] ImGui_context();
-    ~ImGui_context();
-};
-
 class Application
 {
 public:
     [[nodiscard]] Application();
-    ~Application();
 
     Application(const Application &) = delete;
     Application &operator=(const Application &) = delete;
@@ -44,10 +31,22 @@ private:
     void set_fullscreen();
     void set_windowed();
 
-    Glfw_context m_glfw_context;
-    GLFWwindow *m_window;
-    ImGui_context m_imgui_context;
-    std::unique_ptr<Renderer> m_renderer;
+    struct Glfw_context
+    {
+        [[nodiscard]] Glfw_context();
+        ~Glfw_context();
+    } m_glfw_context {};
+
+    std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> m_window {
+        nullptr, &glfwDestroyWindow};
+
+    struct ImGui_context
+    {
+        [[nodiscard]] ImGui_context();
+        ~ImGui_context();
+    } m_imgui_context {};
+
+    std::unique_ptr<Renderer> m_renderer {};
 };
 
 #endif // APPLICATION_HPP

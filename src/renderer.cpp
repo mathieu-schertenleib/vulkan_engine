@@ -32,6 +32,7 @@
 
 #include <iostream>
 #include <limits>
+#include <memory_resource>
 #include <stdexcept>
 #include <vector>
 
@@ -57,7 +58,7 @@ inline constexpr vk::DebugUtilsMessengerCreateInfoEXT
         .messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
                        vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
                        vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-        .pfnUserCallback = debug_callback};
+        .pfnUserCallback = &debug_callback};
 
 inline constexpr auto khronos_validation_layer = "VK_LAYER_KHRONOS_validation";
 
@@ -67,8 +68,9 @@ inline constexpr auto khronos_validation_layer = "VK_LAYER_KHRONOS_validation";
 
     return std::any_of(available_layers.begin(),
                        available_layers.end(),
-                       [](const auto &layer) {
-                           return std::strcmp(layer.layerName,
+                       [](const vk::LayerProperties &layer_properties)
+                       {
+                           return std::strcmp(layer_properties.layerName,
                                               khronos_validation_layer) == 0;
                        });
 }
@@ -83,10 +85,10 @@ swapchain_extension_supported(const vk::raii::PhysicalDevice &physical_device)
 
     return std::any_of(available_extensions.begin(),
                        available_extensions.end(),
-                       [](const auto &extension)
+                       [](const vk::ExtensionProperties &extension_properties)
                        {
                            return std::strcmp(
-                                      extension.extensionName,
+                                      extension_properties.extensionName,
                                       VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0;
                        });
 }
@@ -176,8 +178,7 @@ is_physical_device_suitable(const vk::raii::PhysicalDevice &physical_device,
                                  std::string(" is not supported"));
     }
 
-    auto enabled_extensions = required_extensions;
-    enabled_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    required_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     const vk::InstanceCreateInfo instance_create_info {
         .pNext = &debug_utils_messenger_create_info,
@@ -185,8 +186,8 @@ is_physical_device_suitable(const vk::raii::PhysicalDevice &physical_device,
         .enabledLayerCount = 1,
         .ppEnabledLayerNames = &khronos_validation_layer,
         .enabledExtensionCount =
-            static_cast<std::uint32_t>(enabled_extensions.size()),
-        .ppEnabledExtensionNames = enabled_extensions.data()};
+            static_cast<std::uint32_t>(required_extensions.size()),
+        .ppEnabledExtensionNames = required_extensions.data()};
 
     return {{}, instance_create_info};
 
@@ -227,8 +228,7 @@ create_surface(const vk::raii::Instance &instance, GLFWwindow *window)
 select_physical_device(const vk::raii::Instance &instance,
                        vk::SurfaceKHR surface)
 {
-    vk::raii::PhysicalDevices physical_devices(instance);
-
+    const auto physical_devices = instance.enumeratePhysicalDevices();
     if (physical_devices.empty())
     {
         throw std::runtime_error("Failed to find a device with Vulkan support");
@@ -2062,4 +2062,3 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
 
     m_current_frame = (m_current_frame + 1) % max_frames_in_flight;
 }
-

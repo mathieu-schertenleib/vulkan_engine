@@ -11,8 +11,9 @@ Debug_memory_resource::Debug_memory_resource(
 void *Debug_memory_resource::do_allocate(std::size_t bytes,
                                          std::size_t alignment)
 {
-    std::cout << "do_allocate " << bytes << " bytes\n";
+    std::cout << "Allocating " << bytes << " bytes\n";
 
+    m_total_allocated += bytes;
     return m_upstream->allocate(bytes, alignment);
 }
 
@@ -20,13 +21,8 @@ void Debug_memory_resource::do_deallocate(void *ptr,
                                           std::size_t bytes,
                                           std::size_t alignment)
 {
-    std::cout << "do_deallocate " << bytes << " bytes\n";
+    std::cout << "Deallocating " << bytes << " bytes\n";
 
+    m_total_allocated -= bytes;
     m_upstream->deallocate(ptr, bytes, alignment);
-}
-
-bool Debug_memory_resource::do_is_equal(
-    const std::pmr::memory_resource &other) const noexcept
-{
-    return this == &other;
 }
