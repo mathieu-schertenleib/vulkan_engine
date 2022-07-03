@@ -2019,9 +2019,8 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
                     scale);
         ImGui::Text(
             "Framebuffer: %d x %d", m_framebuffer_width, m_framebuffer_height);
-
-        ImGui::End();
     }
+    ImGui::End();
 
     ImGui::Render();
 
