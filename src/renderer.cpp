@@ -1522,10 +1522,11 @@ inline constexpr std::array vertex_attribute_descriptions {
     | \ |
     1---2
  */
-inline constexpr Vertex quad_vertices[] {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-                                         {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-                                         {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-                                         {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
+inline constexpr Vertex fullscreen_quad_vertices[] {
+    {{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+    {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+    {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
 
 inline constexpr std::uint16_t quad_indices[] {0, 1, 2, 2, 3, 0};
 
@@ -1620,7 +1621,8 @@ Renderer::Renderer(GLFWwindow *window,
     m_descriptor_pool {create_descriptor_pool(m_device)},
     m_command_pool {
         create_command_pool(m_device, m_queue_family_indices.graphics)},
-    m_offscreen_width {160}, m_offscreen_height {90},
+    m_geometry {create_geometry()}, m_offscreen_width {160},
+    m_offscreen_height {90},
     m_offscreen_color_attachment {
         create_offscreen_color_attachment(m_device,
                                           m_physical_device,
@@ -1661,15 +1663,15 @@ Renderer::Renderer(GLFWwindow *window,
                              m_physical_device,
                              m_command_pool,
                              m_graphics_queue,
-                             m_vertices.data(),
-                             m_vertices.size() * sizeof(Vertex))},
+                             m_geometry.vertices.data(),
+                             m_geometry.vertices.size() * sizeof(Vertex))},
     m_offscreen_index_buffer {
         create_index_buffer(m_device,
                             m_physical_device,
                             m_command_pool,
                             m_graphics_queue,
-                            m_indices.data(),
-                            m_indices.size() * sizeof(std::uint16_t))},
+                            m_geometry.indices.data(),
+                            m_geometry.indices.size() * sizeof(std::uint16_t))},
     m_offscreen_uniform_buffer {create_uniform_buffer(
         m_device, m_physical_device, sizeof(Uniform_buffer_object))},
     m_offscreen_descriptor_set {
@@ -1707,13 +1709,13 @@ Renderer::Renderer(GLFWwindow *window,
                                         *m_render_pass,
                                         m_swapchain.extent.width,
                                         m_swapchain.extent.height)},
-    m_vertex_buffer {
-        create_vertex_buffer(m_device,
-                             m_physical_device,
-                             m_command_pool,
-                             m_graphics_queue,
-                             quad_vertices,
-                             std::size(quad_vertices) * sizeof(Vertex))},
+    m_vertex_buffer {create_vertex_buffer(m_device,
+                                          m_physical_device,
+                                          m_command_pool,
+                                          m_graphics_queue,
+                                          fullscreen_quad_vertices,
+                                          std::size(fullscreen_quad_vertices) *
+                                              sizeof(Vertex))},
     m_index_buffer {
         create_index_buffer(m_device,
                             m_physical_device,
@@ -1765,6 +1767,40 @@ Renderer::~Renderer()
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+}
+
+Geometry Renderer::create_geometry()
+{
+    Geometry geometry;
+
+    const auto create_quad = [&](const glm::vec2 &position,
+                                 const glm::vec2 &size,
+                                 const glm::vec2 &tex_coord_0,
+                                 const glm::vec2 &tex_coord_1)
+    {
+        const auto vertex_offset =
+            static_cast<std::uint16_t>(geometry.vertices.size());
+        geometry.vertices.push_back(
+            {{position.x, position.y, 0.0f}, tex_coord_0});
+        geometry.vertices.push_back({{position.x, position.y + size.y, 0.0f},
+                                     {tex_coord_0.x, tex_coord_1.y}});
+        geometry.vertices.push_back(
+            {{position.x + size.x, position.y + size.y, 0.0f}, tex_coord_1});
+        geometry.vertices.push_back({{position.x + size.x, position.y, 0.0f},
+                                     {tex_coord_1.x, tex_coord_0.y}});
+        geometry.indices.push_back(vertex_offset + 0);
+        geometry.indices.push_back(vertex_offset + 1);
+        geometry.indices.push_back(vertex_offset + 2);
+        geometry.indices.push_back(vertex_offset + 2);
+        geometry.indices.push_back(vertex_offset + 3);
+        geometry.indices.push_back(vertex_offset + 0);
+    };
+
+    create_quad({-1.0f, -1.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
+
+    create_quad({0.0f, 0.0f}, {0.5f, 0.5f}, {0.1f, 0.1f}, {0.2f, 0.2f});
+
+    return geometry;
 }
 
 Sync_objects Renderer::create_sync_objects()
@@ -1856,7 +1892,7 @@ void Renderer::record_draw_command_buffer(std::uint32_t image_index)
             *m_offscreen_index_buffer.buffer, 0, vk::IndexType::eUint16);
 
         command_buffer.drawIndexed(
-            static_cast<std::uint32_t>(m_indices.size()), 1, 0, 0, 0);
+            static_cast<std::uint32_t>(m_geometry.indices.size()), 1, 0, 0, 0);
 
         command_buffer.endRenderPass();
     }
@@ -1908,7 +1944,6 @@ void Renderer::recreate_swapchain()
 {
     if (m_framebuffer_width == 0 || m_framebuffer_height == 0)
     {
-        // TODO: check that this is actually what we should do
         return;
     }
 
@@ -2052,8 +2087,8 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
     if (present_result == vk::Result::eErrorOutOfDateKHR ||
         present_result == vk::Result::eSuboptimalKHR || m_framebuffer_resized)
     {
-        m_framebuffer_resized = false;
         recreate_swapchain();
+        m_framebuffer_resized = false;
     }
     else if (present_result != vk::Result::eSuccess)
     {

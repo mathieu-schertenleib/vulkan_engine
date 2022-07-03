@@ -99,3 +99,41 @@ foreach (SHADER IN LISTS SHADERS)
 endforeach ()
 add_custom_target(shaders ALL DEPENDS ${SPV_SHADERS})
 add_dependencies(vulkan_engine shaders)
+
+
+# ------------- Tests ----------------------
+
+
+add_executable(tests
+        tests/main.cpp
+        src/application.cpp src/application.hpp
+        src/renderer.cpp src/renderer.hpp
+        src/utils.cpp src/utils.hpp
+        src/memory.cpp src/memory.hpp
+        external/stb/stb_image.h
+        external/stb/stb_image_write.h
+        external/imgui/backends/imgui_impl_glfw.cpp
+        external/imgui/backends/imgui_impl_vulkan.cpp
+        external/imgui/imgui.cpp
+        external/imgui/imgui_draw.cpp
+        external/imgui/imgui_tables.cpp
+        external/imgui/imgui_widgets.cpp
+        )
+target_include_directories(tests PRIVATE
+        src
+        external/stb
+        external/imgui
+        external/imgui/backends)
+target_compile_options(tests PRIVATE ${PROJECT_OPTIONS})
+target_compile_features(tests PRIVATE cxx_std_20)
+
+target_include_directories(tests PRIVATE external/glfw/include)
+target_link_libraries(tests PRIVATE glfw)
+
+target_include_directories(tests PRIVATE external/glm)
+target_link_libraries(tests PRIVATE glm)
+
+target_include_directories(tests PRIVATE ${Vulkan_INCLUDE_DIRS})
+target_link_libraries(tests PRIVATE ${Vulkan_LIBRARIES})
+
+add_dependencies(tests shaders)

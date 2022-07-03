@@ -72,6 +72,15 @@ struct Vertex
     glm::vec2 tex_coord;
 };
 
+struct Geometry
+{
+    std::vector<Vertex> vertices {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+                                    {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+                                    {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+                                    {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
+    std::vector<std::uint16_t> indices {0, 1, 2, 2, 3, 0};
+};
+
 struct Sync_objects
 {
     std::vector<vk::raii::Semaphore> image_available_semaphores;
@@ -92,6 +101,8 @@ public:
     void draw_frame(float time, const glm::vec2 &mouse_position);
 
 private:
+    [[nodiscard]] Geometry create_geometry();
+
     [[nodiscard]] Sync_objects create_sync_objects();
 
     void update_uniform_buffer(float time,
@@ -117,11 +128,7 @@ private:
     vk::raii::Sampler m_sampler;
     vk::raii::DescriptorPool m_descriptor_pool;
     vk::raii::CommandPool m_command_pool;
-    const std::vector<Vertex> m_vertices {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-                                          {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-                                          {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-                                          {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
-    const std::vector<std::uint16_t> m_indices {0, 1, 2, 2, 3, 0};
+    Geometry m_geometry;
 
     // Offscreen pass
     std::uint32_t m_offscreen_width;

@@ -23,7 +23,6 @@ cmake --build build
 - [GLM](https://github.com/g-truc/glm)
 - [ImGui](https://github.com/ocornut/imgui)
 - [stb](https://github.com/nothings/stb)
-- [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
 
 ## References
 
