@@ -2,6 +2,7 @@
 
 #include "utils.hpp"
 
+#ifdef ENABLE_DEBUG_UI
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #if defined(__GNUC__) || defined(__clang__)
@@ -11,6 +12,7 @@
 #include "imgui_impl_vulkan.h"
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -32,7 +34,6 @@
 
 #include <iostream>
 #include <limits>
-#include <memory_resource>
 #include <stdexcept>
 #include <vector>
 
@@ -62,9 +63,10 @@ inline constexpr vk::DebugUtilsMessengerCreateInfoEXT
 
 inline constexpr auto khronos_validation_layer = "VK_LAYER_KHRONOS_validation";
 
-[[nodiscard]] bool khronos_validation_layer_supported()
+[[nodiscard]] bool
+khronos_validation_layer_supported(const vk::raii::Context &context)
 {
-    const auto available_layers = vk::enumerateInstanceLayerProperties();
+    const auto available_layers = context.enumerateInstanceLayerProperties();
 
     return std::any_of(available_layers.begin(),
                        available_layers.end(),
@@ -76,6 +78,32 @@ inline constexpr auto khronos_validation_layer = "VK_LAYER_KHRONOS_validation";
 }
 
 #endif
+
+[[nodiscard]] bool instance_extensions_supported(
+    const vk::raii::Context &context,
+    const std::vector<const char *> &required_extensions)
+{
+    const auto available_extensions =
+        context.enumerateInstanceExtensionProperties();
+
+    const auto is_extension_supported = [&](const char *extension)
+    {
+        return std::any_of(
+            available_extensions.begin(),
+            available_extensions.end(),
+            [&](const vk::ExtensionProperties &extension_properties) {
+                return std::strcmp(extension_properties.extensionName,
+                                   extension) == 0;
+            });
+    };
+
+    return std::all_of(required_extensions.begin(),
+                       required_extensions.end(),
+                       [&](const char *extension)
+                       { return is_extension_supported(extension); });
+}
+
+constexpr std::uint32_t max_frames_in_flight {2};
 
 [[nodiscard]] bool
 swapchain_extension_supported(const vk::raii::PhysicalDevice &physical_device)
@@ -155,7 +183,8 @@ is_physical_device_suitable(const vk::raii::PhysicalDevice &physical_device,
     return true;
 }
 
-[[nodiscard]] vk::raii::Instance create_instance()
+[[nodiscard]] vk::raii::Instance
+create_instance(const vk::raii::Context &context)
 {
     constexpr vk::ApplicationInfo application_info {
         .pApplicationName = "Vulkan Experiment",
@@ -171,7 +200,7 @@ is_physical_device_suitable(const vk::raii::PhysicalDevice &physical_device,
 
 #ifdef ENABLE_VALIDATION_LAYERS
 
-    if (!khronos_validation_layer_supported())
+    if (!khronos_validation_layer_supported(context))
     {
         throw std::runtime_error(std::string("Validation layer ") +
                                  std::string(khronos_validation_layer) +
@@ -179,6 +208,11 @@ is_physical_device_suitable(const vk::raii::PhysicalDevice &physical_device,
     }
 
     required_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+
+    if (!instance_extensions_supported(context, required_extensions))
+    {
+        throw std::runtime_error("Unsupported instance extension");
+    }
 
     const vk::InstanceCreateInfo instance_create_info {
         .pNext = &debug_utils_messenger_create_info,
@@ -192,6 +226,11 @@ is_physical_device_suitable(const vk::raii::PhysicalDevice &physical_device,
     return {{}, instance_create_info};
 
 #else
+
+    if (!instance_extensions_supported(context, required_extensions))
+    {
+        throw std::runtime_error("Unsupported instance extension");
+    }
 
     const vk::InstanceCreateInfo instance_create_info {
         .pApplicationInfo = &application_info,
@@ -1230,6 +1269,21 @@ void write_image_to_png(const vk::raii::Device &device,
 [[nodiscard]] vk::raii::DescriptorPool
 create_descriptor_pool(const vk::raii::Device &device)
 {
+    constexpr vk::DescriptorPoolSize pool_sizes[] {
+        {vk::DescriptorType::eCombinedImageSampler, max_frames_in_flight},
+        {vk::DescriptorType::eUniformBuffer, max_frames_in_flight}};
+    const vk::DescriptorPoolCreateInfo create_info {
+        .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        .maxSets = max_frames_in_flight,
+        .poolSizeCount = static_cast<std::uint32_t>(std::size(pool_sizes)),
+        .pPoolSizes = pool_sizes};
+
+    return {device, create_info};
+}
+
+[[nodiscard]] vk::raii::DescriptorPool
+create_imgui_descriptor_pool(const vk::raii::Device &device)
+{
     // Copied from imgui/examples/example_glfw_vulkan
     constexpr vk::DescriptorPoolSize pool_sizes[] {
         {vk::DescriptorType::eSampler, 1000},
@@ -1245,7 +1299,7 @@ create_descriptor_pool(const vk::raii::Device &device)
         {vk::DescriptorType::eInputAttachment, 1000}};
     const vk::DescriptorPoolCreateInfo create_info {
         .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-        .maxSets = 1000 * std::size(pool_sizes),
+        .maxSets = 1000,
         .poolSizeCount = static_cast<std::uint32_t>(std::size(pool_sizes)),
         .pPoolSizes = pool_sizes};
 
@@ -1355,7 +1409,7 @@ create_vertex_buffer(const vk::raii::Device &device,
                       vk::MemoryPropertyFlagBits::eHostVisible |
                           vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    auto *const data = staging_buffer.memory.mapMemory(0, vertex_buffer_size);
+    const auto data = staging_buffer.memory.mapMemory(0, vertex_buffer_size);
     std::memcpy(data, vertex_data, vertex_buffer_size);
     staging_buffer.memory.unmapMemory();
 
@@ -1396,7 +1450,7 @@ create_index_buffer(const vk::raii::Device &device,
                       vk::MemoryPropertyFlagBits::eHostVisible |
                           vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    auto *const data = staging_buffer.memory.mapMemory(0, index_buffer_size);
+    const auto data = staging_buffer.memory.mapMemory(0, index_buffer_size);
     std::memcpy(data, index_data, index_buffer_size);
     staging_buffer.memory.unmapMemory();
 
@@ -1431,19 +1485,6 @@ create_uniform_buffer(const vk::raii::Device &device,
                          vk::BufferUsageFlagBits::eUniformBuffer,
                          vk::MemoryPropertyFlagBits::eHostVisible |
                              vk::MemoryPropertyFlagBits::eHostCoherent);
-}
-
-[[nodiscard]] vk::raii::CommandBuffer
-create_draw_command_buffer(const vk::raii::Device &device,
-                           const vk::raii::CommandPool &command_pool)
-{
-    const vk::CommandBufferAllocateInfo allocate_info {
-        .commandPool = *command_pool,
-        .level = vk::CommandBufferLevel::ePrimary,
-        .commandBufferCount = 1};
-
-    vk::raii::CommandBuffers command_buffers(device, allocate_info);
-    return std::move(command_buffers.front());
 }
 
 [[nodiscard]] vk::raii::CommandBuffers
@@ -1591,9 +1632,9 @@ viewport_offset(std::uint32_t offscreen_width,
 Renderer::Renderer(GLFWwindow *window,
                    std::uint32_t width,
                    std::uint32_t height)
-    : m_instance
+    : m_context {}, m_instance
 {
-    create_instance()
+    create_instance(m_context)
 }
 #ifdef ENABLE_VALIDATION_LAYERS
 , m_debug_messenger
@@ -1619,9 +1660,12 @@ Renderer::Renderer(GLFWwindow *window,
         m_device, m_swapchain_images, m_swapchain.format)},
     m_sampler {create_sampler(m_device)},
     m_descriptor_pool {create_descriptor_pool(m_device)},
+#ifdef ENABLE_DEBUG_UI
+    m_imgui_descriptor_pool {create_imgui_descriptor_pool(m_device)},
+#endif
     m_command_pool {
         create_command_pool(m_device, m_queue_family_indices.graphics)},
-    m_geometry {create_geometry()}, m_offscreen_width {160},
+    m_vertex_array {create_vertex_array()}, m_offscreen_width {160},
     m_offscreen_height {90},
     m_offscreen_color_attachment {
         create_offscreen_color_attachment(m_device,
@@ -1663,15 +1707,15 @@ Renderer::Renderer(GLFWwindow *window,
                              m_physical_device,
                              m_command_pool,
                              m_graphics_queue,
-                             m_geometry.vertices.data(),
-                             m_geometry.vertices.size() * sizeof(Vertex))},
-    m_offscreen_index_buffer {
-        create_index_buffer(m_device,
-                            m_physical_device,
-                            m_command_pool,
-                            m_graphics_queue,
-                            m_geometry.indices.data(),
-                            m_geometry.indices.size() * sizeof(std::uint16_t))},
+                             m_vertex_array.vertices.data(),
+                             m_vertex_array.vertices.size() * sizeof(Vertex))},
+    m_offscreen_index_buffer {create_index_buffer(
+        m_device,
+        m_physical_device,
+        m_command_pool,
+        m_graphics_queue,
+        m_vertex_array.indices.data(),
+        m_vertex_array.indices.size() * sizeof(std::uint16_t))},
     m_offscreen_uniform_buffer {create_uniform_buffer(
         m_device, m_physical_device, sizeof(Uniform_buffer_object))},
     m_offscreen_descriptor_set {
@@ -1733,6 +1777,7 @@ Renderer::Renderer(GLFWwindow *window,
         create_draw_command_buffers(m_device, m_command_pool)},
     m_sync_objects {create_sync_objects()}
 {
+#ifdef ENABLE_DEBUG_UI
     ImGui_ImplGlfw_InitForVulkan(window, true);
     ImGui_ImplVulkan_InitInfo init_info {};
     init_info.Instance = *m_instance;
@@ -1740,7 +1785,7 @@ Renderer::Renderer(GLFWwindow *window,
     init_info.Device = *m_device;
     init_info.QueueFamily = m_queue_family_indices.graphics;
     init_info.Queue = *m_graphics_queue;
-    init_info.DescriptorPool = *m_descriptor_pool;
+    init_info.DescriptorPool = *m_imgui_descriptor_pool;
     init_info.Subpass = 0;
     init_info.MinImageCount = m_swapchain.min_image_count;
     init_info.ImageCount =
@@ -1759,19 +1804,22 @@ Renderer::Renderer(GLFWwindow *window,
     end_one_time_submit_command_buffer(command_buffer, m_graphics_queue);
     m_device.waitIdle();
     ImGui_ImplVulkan_DestroyFontUploadObjects();
+#endif
 }
 
 Renderer::~Renderer()
 {
     m_device.waitIdle();
 
+#ifdef ENABLE_DEBUG_UI
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+#endif
 }
 
-Geometry Renderer::create_geometry()
+Vertex_array Renderer::create_vertex_array()
 {
-    Geometry geometry;
+    Vertex_array vertex_array;
 
     const auto create_quad = [&](const glm::vec2 &position,
                                  const glm::vec2 &size,
@@ -1779,28 +1827,30 @@ Geometry Renderer::create_geometry()
                                  const glm::vec2 &tex_coord_1)
     {
         const auto vertex_offset =
-            static_cast<std::uint16_t>(geometry.vertices.size());
-        geometry.vertices.push_back(
+            static_cast<std::uint16_t>(vertex_array.vertices.size());
+        vertex_array.vertices.push_back(
             {{position.x, position.y, 0.0f}, tex_coord_0});
-        geometry.vertices.push_back({{position.x, position.y + size.y, 0.0f},
-                                     {tex_coord_0.x, tex_coord_1.y}});
-        geometry.vertices.push_back(
+        vertex_array.vertices.push_back(
+            {{position.x, position.y + size.y, 0.0f},
+             {tex_coord_0.x, tex_coord_1.y}});
+        vertex_array.vertices.push_back(
             {{position.x + size.x, position.y + size.y, 0.0f}, tex_coord_1});
-        geometry.vertices.push_back({{position.x + size.x, position.y, 0.0f},
-                                     {tex_coord_1.x, tex_coord_0.y}});
-        geometry.indices.push_back(vertex_offset + 0);
-        geometry.indices.push_back(vertex_offset + 1);
-        geometry.indices.push_back(vertex_offset + 2);
-        geometry.indices.push_back(vertex_offset + 2);
-        geometry.indices.push_back(vertex_offset + 3);
-        geometry.indices.push_back(vertex_offset + 0);
+        vertex_array.vertices.push_back(
+            {{position.x + size.x, position.y, 0.0f},
+             {tex_coord_1.x, tex_coord_0.y}});
+        vertex_array.indices.push_back(vertex_offset + 0);
+        vertex_array.indices.push_back(vertex_offset + 1);
+        vertex_array.indices.push_back(vertex_offset + 2);
+        vertex_array.indices.push_back(vertex_offset + 2);
+        vertex_array.indices.push_back(vertex_offset + 3);
+        vertex_array.indices.push_back(vertex_offset + 0);
     };
 
     create_quad({-1.0f, -1.0f}, {2.0f, 2.0f}, {0.0f, 0.0f}, {1.0f, 1.0f});
 
     create_quad({0.0f, 0.0f}, {0.5f, 0.5f}, {0.1f, 0.1f}, {0.2f, 0.2f});
 
-    return geometry;
+    return vertex_array;
 }
 
 Sync_objects Renderer::create_sync_objects()
@@ -1854,7 +1904,7 @@ void Renderer::update_uniform_buffer(float time,
     m_offscreen_uniform_buffer.memory.unmapMemory();
 }
 
-void Renderer::record_draw_command_buffer(std::uint32_t image_index)
+void Renderer::record_command_buffer(std::uint32_t image_index)
 {
     const auto &command_buffer = m_draw_command_buffers[m_current_frame];
 
@@ -1892,7 +1942,11 @@ void Renderer::record_draw_command_buffer(std::uint32_t image_index)
             *m_offscreen_index_buffer.buffer, 0, vk::IndexType::eUint16);
 
         command_buffer.drawIndexed(
-            static_cast<std::uint32_t>(m_geometry.indices.size()), 1, 0, 0, 0);
+            static_cast<std::uint32_t>(m_vertex_array.indices.size()),
+            1,
+            0,
+            0,
+            0);
 
         command_buffer.endRenderPass();
     }
@@ -1932,7 +1986,9 @@ void Renderer::record_draw_command_buffer(std::uint32_t image_index)
         command_buffer.drawIndexed(
             static_cast<std::uint32_t>(std::size(quad_indices)), 1, 0, 0, 0);
 
+#ifdef ENABLE_DEBUG_UI
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *command_buffer);
+#endif
 
         command_buffer.endRenderPass();
     }
@@ -1994,11 +2050,12 @@ void Renderer::resize_framebuffer(std::uint32_t width, std::uint32_t height)
 
 void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
 {
+#ifdef ENABLE_DEBUG_UI
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    if (ImGui::Begin("Info"))
+    if (ImGui::Begin("Debug"))
     {
         ImGui::Text("%.1f fps, %.3f ms/frame",
                     static_cast<double>(ImGui::GetIO().Framerate),
@@ -2023,6 +2080,7 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
     ImGui::End();
 
     ImGui::Render();
+#endif
 
     const auto wait_result = m_device.waitForFences(
         *m_sync_objects.in_flight_fences[m_current_frame],
@@ -2054,7 +2112,7 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
 
     m_draw_command_buffers[m_current_frame].reset();
 
-    record_draw_command_buffer(image_index);
+    record_command_buffer(image_index);
 
     const vk::PipelineStageFlags wait_stages[] {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};

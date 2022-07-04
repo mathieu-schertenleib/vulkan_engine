@@ -37,7 +37,7 @@
 #define ENABLE_VALIDATION_LAYERS
 #endif
 
-constexpr std::uint32_t max_frames_in_flight {2};
+#define ENABLE_DEBUG_UI
 
 struct Queue_family_indices
 {
@@ -72,13 +72,10 @@ struct Vertex
     glm::vec2 tex_coord;
 };
 
-struct Geometry
+struct Vertex_array
 {
-    std::vector<Vertex> vertices {{{-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-                                    {{-1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
-                                    {{1.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
-                                    {{1.0f, -1.0f, 0.0f}, {1.0f, 0.0f}}};
-    std::vector<std::uint16_t> indices {0, 1, 2, 2, 3, 0};
+    std::vector<Vertex> vertices;
+    std::vector<std::uint16_t> indices;
 };
 
 struct Sync_objects
@@ -101,17 +98,18 @@ public:
     void draw_frame(float time, const glm::vec2 &mouse_position);
 
 private:
-    [[nodiscard]] Geometry create_geometry();
+    [[nodiscard]] Vertex_array create_vertex_array();
 
     [[nodiscard]] Sync_objects create_sync_objects();
 
     void update_uniform_buffer(float time,
                                const glm::vec2 &mouse_position) const;
 
-    void record_draw_command_buffer(std::uint32_t image_index);
+    void record_command_buffer(std::uint32_t image_index);
 
     void recreate_swapchain();
 
+    vk::raii::Context m_context;
     vk::raii::Instance m_instance;
 #ifdef ENABLE_VALIDATION_LAYERS
     vk::raii::DebugUtilsMessengerEXT m_debug_messenger;
@@ -127,8 +125,11 @@ private:
     std::vector<vk::raii::ImageView> m_swapchain_image_views;
     vk::raii::Sampler m_sampler;
     vk::raii::DescriptorPool m_descriptor_pool;
+#ifdef ENABLE_DEBUG_UI
+    vk::raii::DescriptorPool m_imgui_descriptor_pool;
+#endif
     vk::raii::CommandPool m_command_pool;
-    Geometry m_geometry;
+    Vertex_array m_vertex_array;
 
     // Offscreen pass
     std::uint32_t m_offscreen_width;

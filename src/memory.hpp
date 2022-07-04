@@ -9,6 +9,7 @@ public:
     explicit Debug_memory_resource(
         std::pmr::memory_resource *upstream = std::pmr::get_default_resource());
 
+private:
     [[nodiscard]] void *do_allocate(std::size_t bytes,
                                     std::size_t alignment) override;
 
@@ -21,12 +22,6 @@ public:
         return this == &other;
     }
 
-    [[nodiscard]] constexpr std::size_t usage() const noexcept
-    {
-        return m_total_allocated - m_total_deallocated;
-    }
-
-private:
     std::pmr::memory_resource *m_upstream {};
     std::size_t m_total_allocated {};
     std::size_t m_total_deallocated {};

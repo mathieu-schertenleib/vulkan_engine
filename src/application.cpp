@@ -63,7 +63,6 @@ Application::Application()
 
 void Application::run()
 {
-    int frames {};
     const auto start_time = glfwGetTime();
 
     while (!glfwWindowShouldClose(m_window.get()))
@@ -78,8 +77,6 @@ void Application::run()
 
         m_renderer->draw_frame(static_cast<float>(total_time),
                                {static_cast<float>(x), static_cast<float>(y)});
-
-        ++frames;
     }
 }
 
@@ -88,7 +85,8 @@ void Application::key_callback(
 {
     if (action == GLFW_PRESS && key == GLFW_KEY_F)
     {
-        auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
+        const auto app =
+            static_cast<Application *>(glfwGetWindowUserPointer(window));
         if (app->is_fullscreen())
             app->set_windowed();
         else
@@ -100,7 +98,8 @@ void Application::framebuffer_size_callback(GLFWwindow *window,
                                             int width,
                                             int height)
 {
-    auto app = static_cast<Application *>(glfwGetWindowUserPointer(window));
+    const auto app =
+        static_cast<Application *>(glfwGetWindowUserPointer(window));
     app->m_renderer->resize_framebuffer(static_cast<std::uint32_t>(width),
                                         static_cast<std::uint32_t>(height));
 }
@@ -112,8 +111,8 @@ bool Application::is_fullscreen()
 
 void Application::set_fullscreen()
 {
-    auto *const monitor = glfwGetPrimaryMonitor();
-    const auto *const video_mode = glfwGetVideoMode(monitor);
+    const auto monitor = glfwGetPrimaryMonitor();
+    const auto video_mode = glfwGetVideoMode(monitor);
     glfwSetWindowMonitor(m_window.get(),
                          monitor,
                          0,
@@ -125,8 +124,8 @@ void Application::set_fullscreen()
 
 void Application::set_windowed()
 {
-    auto *const monitor = glfwGetPrimaryMonitor();
-    const auto *const video_mode = glfwGetVideoMode(monitor);
+    const auto monitor = glfwGetPrimaryMonitor();
+    const auto video_mode = glfwGetVideoMode(monitor);
     constexpr int width {1280};
     constexpr int height {720};
     glfwSetWindowMonitor(m_window.get(),
