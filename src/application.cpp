@@ -63,20 +63,14 @@ Application::Application()
 
 void Application::run()
 {
-    const auto start_time = glfwGetTime();
-
     while (!glfwWindowShouldClose(m_window.get()))
     {
         glfwPollEvents();
 
-        const auto now = glfwGetTime();
-        const auto total_time = now - start_time;
-
         double x, y;
         glfwGetCursorPos(m_window.get(), &x, &y);
 
-        m_renderer->draw_frame(static_cast<float>(total_time),
-                               {static_cast<float>(x), static_cast<float>(y)});
+        m_renderer->draw_frame({static_cast<float>(x), static_cast<float>(y)});
     }
 }
 

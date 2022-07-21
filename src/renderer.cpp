@@ -811,23 +811,14 @@ create_offscreen_render_pass(const vk::raii::Device &device,
 [[nodiscard]] vk::raii::DescriptorSetLayout
 create_offscreen_descriptor_set_layout(const vk::raii::Device &device)
 {
-    constexpr vk::DescriptorSetLayoutBinding ubo_layout_binding {
-        .binding = 0,
-        .descriptorType = vk::DescriptorType::eUniformBuffer,
-        .descriptorCount = 1,
-        .stageFlags = vk::ShaderStageFlagBits::eVertex};
-
     constexpr vk::DescriptorSetLayoutBinding sampler_layout_binding {
-        .binding = 1,
+        .binding = 0,
         .descriptorType = vk::DescriptorType::eCombinedImageSampler,
         .descriptorCount = 1,
         .stageFlags = vk::ShaderStageFlagBits::eFragment};
 
-    const vk::DescriptorSetLayoutBinding bindings[] {ubo_layout_binding,
-                                                     sampler_layout_binding};
-
     const vk::DescriptorSetLayoutCreateInfo create_info {
-        .bindingCount = std::size(bindings), .pBindings = bindings};
+        .bindingCount = 1, .pBindings = &sampler_layout_binding};
 
     return {device, create_info};
 }
@@ -843,6 +834,25 @@ create_descriptor_set_layout(const vk::raii::Device &device)
 
     const vk::DescriptorSetLayoutCreateInfo create_info {
         .bindingCount = 1, .pBindings = &sampler_layout_binding};
+
+    return {device, create_info};
+}
+
+[[nodiscard]] vk::raii::PipelineLayout create_offscreen_pipeline_layout(
+    const vk::raii::Device &device,
+    const vk::raii::DescriptorSetLayout &descriptor_set_layout)
+{
+    const vk::PushConstantRange push_constant_range {
+        .stageFlags = vk::ShaderStageFlagBits::eFragment,
+        .offset = 0,
+        .size = sizeof(Push_constants),
+    };
+
+    const vk::PipelineLayoutCreateInfo create_info {
+        .setLayoutCount = 1,
+        .pSetLayouts = &*descriptor_set_layout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_constant_range};
 
     return {device, create_info};
 }
@@ -868,18 +878,15 @@ create_shader_module(const vk::raii::Device &device,
     return {device, create_info};
 }
 
-[[nodiscard]] vk::raii::Pipeline create_pipeline(
-    const vk::raii::Device &device,
-    const char *vertex_shader_path,
-    const char *fragment_shader_path,
-    vk::Offset2D viewport_offset,
-    vk::Extent2D viewport_extent,
-    vk::Extent2D framebuffer_extent,
-    vk::PipelineLayout pipeline_layout,
-    vk::RenderPass render_pass,
-    const vk::VertexInputBindingDescription &vertex_binding_description,
-    const vk::VertexInputAttributeDescription *vertex_attribute_descriptions,
-    std::uint32_t num_vertex_attribute_descriptions)
+[[nodiscard]] vk::raii::Pipeline
+create_pipeline(const vk::raii::Device &device,
+                const char *vertex_shader_path,
+                const char *fragment_shader_path,
+                vk::Offset2D viewport_offset,
+                vk::Extent2D viewport_extent,
+                vk::Extent2D framebuffer_extent,
+                vk::PipelineLayout pipeline_layout,
+                vk::RenderPass render_pass)
 {
     const auto vertex_shader_code = load_binary_file(vertex_shader_path);
     if (vertex_shader_code.empty())
@@ -915,16 +922,11 @@ create_shader_module(const vk::raii::Device &device,
         vertex_shader_stage_create_info, fragment_shader_stage_create_info};
 
     const vk::PipelineVertexInputStateCreateInfo
-        vertex_input_state_create_info {
-            .vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = &vertex_binding_description,
-            .vertexAttributeDescriptionCount =
-                num_vertex_attribute_descriptions,
-            .pVertexAttributeDescriptions = vertex_attribute_descriptions};
+        vertex_input_state_create_info {};
 
     const vk::PipelineInputAssemblyStateCreateInfo
         input_assembly_state_create_info {
-            .topology = vk::PrimitiveTopology::eTriangleList,
+            .topology = vk::PrimitiveTopology::eTriangleStrip,
             .primitiveRestartEnable = VK_FALSE};
 
     const vk::Viewport viewport {
@@ -1302,11 +1304,11 @@ void write_image_to_png(const vk::raii::Device &device,
 create_descriptor_pool(const vk::raii::Device &device)
 {
     constexpr vk::DescriptorPoolSize pool_sizes[] {
-        {vk::DescriptorType::eCombinedImageSampler, g_max_frames_in_flight},
-        {vk::DescriptorType::eUniformBuffer, g_max_frames_in_flight}};
+        {vk::DescriptorType::eCombinedImageSampler,
+         1 + g_max_frames_in_flight}};
     const vk::DescriptorPoolCreateInfo create_info {
         .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-        .maxSets = g_max_frames_in_flight * std::size(pool_sizes),
+        .maxSets = 1 + g_max_frames_in_flight,
         .poolSizeCount = static_cast<std::uint32_t>(std::size(pool_sizes)),
         .pPoolSizes = pool_sizes};
 
@@ -1382,9 +1384,7 @@ create_offscreen_descriptor_set(const vk::raii::Device &device,
                                 vk::DescriptorSetLayout descriptor_set_layout,
                                 vk::DescriptorPool descriptor_pool,
                                 vk::Sampler sampler,
-                                vk::ImageView texture_image_view,
-                                const Vulkan_buffer &uniform_buffer,
-                                vk::DeviceSize uniform_buffer_size)
+                                vk::ImageView texture_image_view)
 {
     const vk::DescriptorSetAllocateInfo allocate_info {
         .descriptorPool = descriptor_pool,
@@ -1394,33 +1394,20 @@ create_offscreen_descriptor_set(const vk::raii::Device &device,
     auto descriptor_set =
         (*device).allocateDescriptorSets(allocate_info).front();
 
-    const vk::DescriptorBufferInfo buffer_info {.buffer =
-                                                    *uniform_buffer.buffer,
-                                                .offset = 0,
-                                                .range = uniform_buffer_size};
-
     const vk::DescriptorImageInfo image_info {
         .sampler = sampler,
         .imageView = texture_image_view,
         .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
 
-    const std::array descriptor_writes {
-        vk::WriteDescriptorSet {.dstSet = descriptor_set,
-                                .dstBinding = 0,
-                                .dstArrayElement = 0,
-                                .descriptorCount = 1,
-                                .descriptorType =
-                                    vk::DescriptorType::eUniformBuffer,
-                                .pBufferInfo = &buffer_info},
-        vk::WriteDescriptorSet {.dstSet = descriptor_set,
-                                .dstBinding = 1,
-                                .dstArrayElement = 0,
-                                .descriptorCount = 1,
-                                .descriptorType =
-                                    vk::DescriptorType::eCombinedImageSampler,
-                                .pImageInfo = &image_info}};
+    const vk::WriteDescriptorSet descriptor_write {
+        .dstSet = descriptor_set,
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .pImageInfo = &image_info};
 
-    device.updateDescriptorSets(descriptor_writes, {});
+    device.updateDescriptorSets({descriptor_write}, {});
 
     return descriptor_set;
 }
@@ -1506,19 +1493,6 @@ create_index_buffer(const vk::raii::Device &device,
     return index_buffer;
 }
 
-[[nodiscard]] Vulkan_buffer
-create_uniform_buffer(const vk::raii::Device &device,
-                      const vk::raii::PhysicalDevice &physical_device,
-                      vk::DeviceSize uniform_buffer_size)
-{
-    return create_buffer(device,
-                         physical_device,
-                         uniform_buffer_size,
-                         vk::BufferUsageFlagBits::eUniformBuffer,
-                         vk::MemoryPropertyFlagBits::eHostVisible |
-                             vk::MemoryPropertyFlagBits::eHostCoherent);
-}
-
 [[nodiscard]] vk::raii::CommandBuffers
 create_draw_command_buffers(const vk::raii::Device &device,
                             const vk::raii::CommandPool &command_pool)
@@ -1566,13 +1540,6 @@ create_draw_command_buffers(const vk::raii::Device &device,
 
     return image;
 }
-
-struct Uniform_buffer_object
-{
-    glm::vec2 resolution;
-    glm::vec2 mouse_position;
-    float time;
-};
 
 void check_vk_result(VkResult result)
 {
@@ -1627,150 +1594,129 @@ viewport_offset(std::uint32_t offscreen_width,
 Renderer::Renderer(GLFWwindow *window,
                    std::uint32_t width,
                    std::uint32_t height)
-    : m_context {}
-    , m_instance {create_instance(m_context)}
+    : m_context {}, m_instance
+{
+    create_instance(m_context)
+}
 #ifdef ENABLE_VALIDATION_LAYERS
-    , m_debug_messenger {create_debug_utils_messenger(m_instance)}
+, m_debug_messenger
+{
+    create_debug_utils_messenger(m_instance)
+}
 #endif
-    , m_surface {create_surface(m_instance, window)}
-    , m_physical_device {select_physical_device(m_instance, *m_surface)}
-    , m_queue_family_indices {get_queue_family_indices(m_physical_device,
-                                                       *m_surface)
-                                  .value()}
-    , m_device {create_device(m_physical_device, m_queue_family_indices)}
-    , m_graphics_queue {m_device.getQueue(m_queue_family_indices.graphics, 0)}
-    , m_present_queue {m_device.getQueue(m_queue_family_indices.present, 0)}
-    , m_swapchain {create_swapchain(m_device,
-                                    m_physical_device,
-                                    *m_surface,
-                                    m_queue_family_indices,
-                                    width,
-                                    height)}
-    , m_swapchain_images {get_swapchain_images(m_swapchain.swapchain)}
-    , m_swapchain_image_views {create_swapchain_image_views(
-          m_device, m_swapchain_images, m_swapchain.format)}
-    , m_sampler {create_sampler(m_device)}
-    , m_descriptor_pool {create_descriptor_pool(m_device)}
-    ,
+, m_surface {create_surface(m_instance, window)},
+    m_physical_device {select_physical_device(m_instance, *m_surface)},
+    m_queue_family_indices {
+        get_queue_family_indices(m_physical_device, *m_surface).value()},
+    m_device {create_device(m_physical_device, m_queue_family_indices)},
+    m_graphics_queue {m_device.getQueue(m_queue_family_indices.graphics, 0)},
+    m_present_queue {m_device.getQueue(m_queue_family_indices.present, 0)},
+    m_swapchain {create_swapchain(m_device,
+                                  m_physical_device,
+                                  *m_surface,
+                                  m_queue_family_indices,
+                                  width,
+                                  height)},
+    m_swapchain_images {get_swapchain_images(m_swapchain.swapchain)},
+    m_swapchain_image_views {create_swapchain_image_views(
+        m_device, m_swapchain_images, m_swapchain.format)},
+    m_sampler {create_sampler(m_device)},
+    m_descriptor_pool {create_descriptor_pool(m_device)},
 #ifdef ENABLE_DEBUG_UI
-    m_imgui_descriptor_pool {create_imgui_descriptor_pool(m_device)}
-    ,
+    m_imgui_descriptor_pool {create_imgui_descriptor_pool(m_device)},
 #endif
     m_command_pool {
-        create_command_pool(m_device, m_queue_family_indices.graphics)}
-    , m_vertex_array {create_vertex_array()}
-    , m_offscreen_width {160}
-    , m_offscreen_height {90}
-    , m_offscreen_color_attachment {create_offscreen_color_attachment(
-          m_device,
-          m_physical_device,
-          m_command_pool,
-          m_graphics_queue,
-          m_offscreen_width,
-          m_offscreen_height,
-          m_swapchain.format)}
-    , m_offscreen_render_pass {create_offscreen_render_pass(m_device,
-                                                            m_swapchain.format)}
-    , m_offscreen_descriptor_set_layout {create_offscreen_descriptor_set_layout(
-          m_device)}
-    , m_offscreen_pipeline_layout {create_pipeline_layout(
-          m_device, m_offscreen_descriptor_set_layout)}
-    , m_offscreen_pipeline {create_offscreen_pipeline(
-          m_device,
-          g_offscreen_vertex_shader_path,
-          g_offscreen_fragment_shader_path,
-          {m_offscreen_width, m_offscreen_height},
-          *m_offscreen_pipeline_layout,
-          *m_offscreen_render_pass,
-          g_vertex_input_binding_description,
-          g_vertex_input_attribute_descriptions.data(),
-          g_vertex_input_attribute_descriptions.size())}
-    , m_offscreen_framebuffer {create_framebuffer(
-          m_device,
-          m_offscreen_color_attachment.view,
-          *m_offscreen_render_pass,
-          m_offscreen_width,
-          m_offscreen_height)}
-    , m_offscreen_texture_image {create_texture_image(m_device,
-                                                      m_physical_device,
-                                                      m_command_pool,
-                                                      m_graphics_queue,
-                                                      g_texture_path)}
-    , m_offscreen_vertex_buffer {create_vertex_buffer(
-          m_device,
-          m_physical_device,
-          m_command_pool,
-          m_graphics_queue,
-          m_vertex_array.vertices.data(),
-          m_vertex_array.vertices.size() * sizeof(Vertex))}
-    , m_offscreen_index_buffer {create_index_buffer(
-          m_device,
-          m_physical_device,
-          m_command_pool,
-          m_graphics_queue,
-          m_vertex_array.indices.data(),
-          m_vertex_array.indices.size() * sizeof(std::uint16_t))}
-    , m_offscreen_uniform_buffer {create_uniform_buffer(
-          m_device, m_physical_device, sizeof(Uniform_buffer_object))}
-    , m_offscreen_descriptor_set {create_offscreen_descriptor_set(
-          m_device,
-          *m_offscreen_descriptor_set_layout,
-          *m_descriptor_pool,
-          *m_sampler,
-          *m_offscreen_texture_image.view,
-          m_offscreen_uniform_buffer,
-          sizeof(Uniform_buffer_object))}
-    , m_framebuffer_width {width}
-    , m_framebuffer_height {height}
-    , m_render_pass {create_render_pass(m_device, m_swapchain.format)}
-    , m_descriptor_set_layout {create_descriptor_set_layout(m_device)}
-    , m_pipeline_layout {create_pipeline_layout(m_device,
-                                                m_descriptor_set_layout)}
-    , m_pipeline {create_pipeline(m_device,
-                                  g_final_vertex_shader_path,
-                                  g_final_fragment_shader_path,
-                                  viewport_offset(m_offscreen_width,
-                                                  m_offscreen_height,
-                                                  m_swapchain.extent.width,
-                                                  m_swapchain.extent.height),
-                                  viewport_extent(m_offscreen_width,
-                                                  m_offscreen_height,
-                                                  m_swapchain.extent.width,
-                                                  m_swapchain.extent.height),
-                                  {m_framebuffer_width, m_framebuffer_height},
-                                  *m_pipeline_layout,
-                                  *m_render_pass,
-                                  g_vertex_input_binding_description,
-                                  g_vertex_input_attribute_descriptions.data(),
-                                  g_vertex_input_attribute_descriptions.size())}
-    , m_framebuffers {create_framebuffers(m_device,
-                                          m_swapchain_image_views,
-                                          *m_render_pass,
-                                          m_swapchain.extent.width,
-                                          m_swapchain.extent.height)}
-    , m_vertex_buffer {create_vertex_buffer(
-          m_device,
-          m_physical_device,
-          m_command_pool,
-          m_graphics_queue,
-          g_fullscreen_quad_vertices,
-          std::size(g_fullscreen_quad_vertices) * sizeof(Vertex))}
-    , m_index_buffer {create_index_buffer(m_device,
+        create_command_pool(m_device, m_queue_family_indices.graphics)},
+    m_vertex_array {create_vertex_array()}, m_offscreen_width {160},
+    m_offscreen_height {90},
+    m_offscreen_color_attachment {
+        create_offscreen_color_attachment(m_device,
                                           m_physical_device,
                                           m_command_pool,
                                           m_graphics_queue,
-                                          g_quad_indices,
-                                          std::size(g_quad_indices) *
-                                              sizeof(std::uint16_t))}
-    , m_descriptor_sets {create_descriptor_sets(
-          m_device,
-          *m_descriptor_set_layout,
-          *m_descriptor_pool,
-          *m_sampler,
-          *m_offscreen_color_attachment.view)}
-    , m_draw_command_buffers {create_draw_command_buffers(m_device,
-                                                          m_command_pool)}
-    , m_sync_objects {create_sync_objects()}
+                                          m_offscreen_width,
+                                          m_offscreen_height,
+                                          m_swapchain.format)},
+    m_offscreen_render_pass {
+        create_offscreen_render_pass(m_device, m_swapchain.format)},
+    m_offscreen_descriptor_set_layout {
+        create_offscreen_descriptor_set_layout(m_device)},
+    m_offscreen_pipeline_layout {create_offscreen_pipeline_layout(
+        m_device, m_offscreen_descriptor_set_layout)},
+    m_offscreen_pipeline {create_offscreen_pipeline(
+        m_device,
+        g_offscreen_vertex_shader_path,
+        g_offscreen_fragment_shader_path,
+        {m_offscreen_width, m_offscreen_height},
+        *m_offscreen_pipeline_layout,
+        *m_offscreen_render_pass,
+        g_vertex_input_binding_description,
+        g_vertex_input_attribute_descriptions.data(),
+        g_vertex_input_attribute_descriptions.size())},
+    m_offscreen_framebuffer {
+        create_framebuffer(m_device,
+                           m_offscreen_color_attachment.view,
+                           *m_offscreen_render_pass,
+                           m_offscreen_width,
+                           m_offscreen_height)},
+    m_offscreen_texture_image {create_texture_image(m_device,
+                                                    m_physical_device,
+                                                    m_command_pool,
+                                                    m_graphics_queue,
+                                                    g_texture_path)},
+    m_offscreen_vertex_buffer {
+        create_vertex_buffer(m_device,
+                             m_physical_device,
+                             m_command_pool,
+                             m_graphics_queue,
+                             m_vertex_array.vertices.data(),
+                             m_vertex_array.vertices.size() * sizeof(Vertex))},
+    m_offscreen_index_buffer {create_index_buffer(
+        m_device,
+        m_physical_device,
+        m_command_pool,
+        m_graphics_queue,
+        m_vertex_array.indices.data(),
+        m_vertex_array.indices.size() * sizeof(std::uint16_t))},
+    m_offscreen_descriptor_set {
+        create_offscreen_descriptor_set(m_device,
+                                        *m_offscreen_descriptor_set_layout,
+                                        *m_descriptor_pool,
+                                        *m_sampler,
+                                        *m_offscreen_texture_image.view)},
+    m_framebuffer_width {width}, m_framebuffer_height {height},
+    m_render_pass {create_render_pass(m_device, m_swapchain.format)},
+    m_descriptor_set_layout {create_descriptor_set_layout(m_device)},
+    m_pipeline_layout {
+        create_pipeline_layout(m_device, m_descriptor_set_layout)},
+    m_pipeline {create_pipeline(m_device,
+                                g_final_vertex_shader_path,
+                                g_final_fragment_shader_path,
+                                viewport_offset(m_offscreen_width,
+                                                m_offscreen_height,
+                                                m_swapchain.extent.width,
+                                                m_swapchain.extent.height),
+                                viewport_extent(m_offscreen_width,
+                                                m_offscreen_height,
+                                                m_swapchain.extent.width,
+                                                m_swapchain.extent.height),
+                                {m_framebuffer_width, m_framebuffer_height},
+                                *m_pipeline_layout,
+                                *m_render_pass)},
+    m_framebuffers {create_framebuffers(m_device,
+                                        m_swapchain_image_views,
+                                        *m_render_pass,
+                                        m_swapchain.extent.width,
+                                        m_swapchain.extent.height)},
+    m_descriptor_sets {
+        create_descriptor_sets(m_device,
+                               *m_descriptor_set_layout,
+                               *m_descriptor_pool,
+                               *m_sampler,
+                               *m_offscreen_color_attachment.view)},
+    m_draw_command_buffers {
+        create_draw_command_buffers(m_device, m_command_pool)},
+    m_sync_objects {create_sync_objects()}
 {
 #ifdef ENABLE_DEBUG_UI
     ImGui_ImplGlfw_InitForVulkan(window, true);
@@ -1869,37 +1815,8 @@ Sync_objects Renderer::create_sync_objects()
     return result;
 }
 
-void Renderer::update_uniform_buffer(float time,
-                                     const glm::vec2 &mouse_position) const
-{
-    const auto [offset_x, offset_y] = viewport_offset(m_offscreen_width,
-                                                      m_offscreen_height,
-                                                      m_framebuffer_width,
-                                                      m_framebuffer_height);
-    const auto [extent_x, extent_y] = viewport_extent(m_offscreen_width,
-                                                      m_offscreen_height,
-                                                      m_framebuffer_width,
-                                                      m_framebuffer_height);
-    const auto offscreen_mouse_normalized =
-        (mouse_position - glm::vec2 {offset_x, offset_y}) /
-        glm::vec2 {extent_x, extent_y};
-    const auto offscreen_mouse_pos =
-        offscreen_mouse_normalized *
-        glm::vec2 {m_offscreen_width, m_offscreen_height};
-
-    const Uniform_buffer_object ubo {
-        .resolution = {static_cast<float>(m_offscreen_width),
-                       static_cast<float>(m_offscreen_height)},
-        .mouse_position = offscreen_mouse_pos,
-        .time = time};
-
-    auto *const data =
-        m_offscreen_uniform_buffer.memory.mapMemory(0, sizeof(ubo));
-    std::memcpy(data, &ubo, sizeof(ubo));
-    m_offscreen_uniform_buffer.memory.unmapMemory();
-}
-
-void Renderer::record_command_buffer(std::uint32_t image_index)
+void Renderer::record_command_buffer(std::uint32_t image_index,
+                                     const Push_constants &push_constants)
 {
     const auto &command_buffer = m_draw_command_buffers[m_current_frame];
 
@@ -1936,6 +1853,12 @@ void Renderer::record_command_buffer(std::uint32_t image_index)
         command_buffer.bindIndexBuffer(
             *m_offscreen_index_buffer.buffer, 0, vk::IndexType::eUint16);
 
+        command_buffer.pushConstants<Push_constants>(
+            *m_offscreen_pipeline_layout,
+            vk::ShaderStageFlagBits::eFragment,
+            0,
+            {push_constants});
+
         command_buffer.drawIndexed(
             static_cast<std::uint32_t>(m_vertex_array.indices.size()),
             1,
@@ -1946,8 +1869,8 @@ void Renderer::record_command_buffer(std::uint32_t image_index)
         command_buffer.endRenderPass();
     }
 
-    // NOTE: explicit synchronization not required between the render passes, as
-    // it is done implicitly via subpass dependencies
+    // NOTE: explicit synchronization not required between the render
+    // passes, as it is done implicitly via subpass dependencies
 
     // Final pass
     {
@@ -1973,13 +1896,7 @@ void Renderer::record_command_buffer(std::uint32_t image_index)
         command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                                     *m_pipeline);
 
-        command_buffer.bindVertexBuffers(0, *m_vertex_buffer.buffer, {0});
-
-        command_buffer.bindIndexBuffer(
-            *m_index_buffer.buffer, 0, vk::IndexType::eUint16);
-
-        command_buffer.drawIndexed(
-            static_cast<std::uint32_t>(std::size(g_quad_indices)), 1, 0, 0, 0);
+        command_buffer.draw(4, 1, 0, 0);
 
 #ifdef ENABLE_DEBUG_UI
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *command_buffer);
@@ -2025,10 +1942,7 @@ void Renderer::recreate_swapchain()
                                                  m_swapchain.extent.height),
                                  {m_framebuffer_width, m_framebuffer_height},
                                  *m_pipeline_layout,
-                                 *m_render_pass,
-                                 g_vertex_input_binding_description,
-                                 g_vertex_input_attribute_descriptions.data(),
-                                 g_vertex_input_attribute_descriptions.size());
+                                 *m_render_pass);
     m_framebuffers = create_framebuffers(m_device,
                                          m_swapchain_image_views,
                                          *m_render_pass,
@@ -2043,7 +1957,7 @@ void Renderer::resize_framebuffer(std::uint32_t width, std::uint32_t height)
     m_framebuffer_height = height;
 }
 
-void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
+void Renderer::draw_frame(const glm::vec2 &mouse_position)
 {
 #ifdef ENABLE_DEBUG_UI
     ImGui_ImplVulkan_NewFrame();
@@ -2101,13 +2015,30 @@ void Renderer::draw_frame(float time, const glm::vec2 &mouse_position)
         throw std::runtime_error("Failed to acquire swapchain image");
     }
 
-    update_uniform_buffer(time, mouse_position);
+    const auto [offset_x, offset_y] = viewport_offset(m_offscreen_width,
+                                                      m_offscreen_height,
+                                                      m_framebuffer_width,
+                                                      m_framebuffer_height);
+    const auto [extent_x, extent_y] = viewport_extent(m_offscreen_width,
+                                                      m_offscreen_height,
+                                                      m_framebuffer_width,
+                                                      m_framebuffer_height);
+    const auto offscreen_mouse_normalized =
+        (mouse_position - glm::vec2 {offset_x, offset_y}) /
+        glm::vec2 {extent_x, extent_y};
+    const auto offscreen_mouse_pos =
+        offscreen_mouse_normalized *
+        glm::vec2 {m_offscreen_width, m_offscreen_height};
+    const Push_constants push_constants {
+        .resolution = {static_cast<float>(m_offscreen_width),
+                       static_cast<float>(m_offscreen_height)},
+        .mouse_position = offscreen_mouse_pos};
 
     m_device.resetFences(*m_sync_objects.in_flight_fences[m_current_frame]);
 
     m_draw_command_buffers[m_current_frame].reset();
 
-    record_command_buffer(image_index);
+    record_command_buffer(image_index, push_constants);
 
     const vk::PipelineStageFlags wait_stages[] {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};

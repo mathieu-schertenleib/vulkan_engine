@@ -85,6 +85,12 @@ struct Sync_objects
     std::vector<vk::raii::Fence> in_flight_fences;
 };
 
+struct Push_constants
+{
+    glm::vec2 resolution;
+    glm::vec2 mouse_position;
+};
+
 class Renderer
 {
 public:
@@ -95,17 +101,15 @@ public:
 
     void resize_framebuffer(std::uint32_t width, std::uint32_t height);
 
-    void draw_frame(float time, const glm::vec2 &mouse_position);
+    void draw_frame(const glm::vec2 &mouse_position);
 
 private:
-    [[nodiscard]] Vertex_array create_vertex_array();
+    void record_command_buffer(std::uint32_t image_index,
+                               const Push_constants &push_constants);
+
+    [[nodiscard]] static Vertex_array create_vertex_array();
 
     [[nodiscard]] Sync_objects create_sync_objects();
-
-    void update_uniform_buffer(float time,
-                               const glm::vec2 &mouse_position) const;
-
-    void record_command_buffer(std::uint32_t image_index);
 
     void recreate_swapchain();
 
@@ -143,7 +147,6 @@ private:
     Vulkan_image m_offscreen_texture_image;
     Vulkan_buffer m_offscreen_vertex_buffer;
     Vulkan_buffer m_offscreen_index_buffer;
-    Vulkan_buffer m_offscreen_uniform_buffer;
     vk::DescriptorSet m_offscreen_descriptor_set;
 
     // Final pass
@@ -154,8 +157,6 @@ private:
     vk::raii::PipelineLayout m_pipeline_layout;
     vk::raii::Pipeline m_pipeline;
     std::vector<vk::raii::Framebuffer> m_framebuffers;
-    Vulkan_buffer m_vertex_buffer;
-    Vulkan_buffer m_index_buffer;
     std::vector<vk::DescriptorSet> m_descriptor_sets;
     vk::raii::CommandBuffers m_draw_command_buffers;
     Sync_objects m_sync_objects;
